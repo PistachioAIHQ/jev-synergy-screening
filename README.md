@@ -15,7 +15,7 @@ From Kim et al., *PLOS ONE* 2023 ([doi:10.1371/journal.pone.0283342](https://doi
 
 Demo set: **200** abstracts, stratified **100 RCT / 100 non_RCT** from the Bat4RCT **test** split (paper split 80/10/10, `random_state=42`; demo subsample seed `20260916`).
 
-## Film path (30–60s)
+## Film path — UI v2 (grid + parallel Jev)
 
 ```bash
 # 1) one-time setup
@@ -24,19 +24,48 @@ pip install -r requirements.txt
 # API key (never commit):
 export TYPESAFE_API_KEY="$(tr -d '\n' < ~/.config/typesafe/api_key)"
 
-# 2) data + live run (writes results/predictions.csv + results/metrics.json)
-python -m src.prepare_demo          # downloads Bat4RCT if needed; writes data/demo_200.csv
-python -m src.run_eval --workers 8  # ~1–3 min for 200 calls
+# 2) ensure demo CSV exists (committed under data/demo_200.csv)
+python -m src.prepare_demo   # only if regenerating
 
-# 3a) web UI (best for screen recording)
+# 3) web UI
 python -m src.serve --port 8765
-# open http://127.0.0.1:8765/ → Start demo
-
-# 3b) CLI film strip
-python -m src.cli --limit 16 --delay 0.4
+# open http://127.0.0.1:8765/
+# → Start = live parallel Jev (default 8 workers; map-reduce wave on 200 blocks)
+# → Replay cached = animate from results/predictions.csv (no API credits)
 ```
 
+Optional offline cache for rehearsal: `python -m src.run_eval --workers 8` writes `results/predictions.csv` + `results/metrics.json`.
+
+CLI film strip: `python -m src.cli --limit 16 --delay 0.4`
+
 Dry-run (no API key): `python -m src.run_eval --dry-run`
+
+### UI v2 behavior
+
+1. **Grid of all 200** pubs as dense blocks (not a table / not a one-at-a-time card lane).
+2. **Start** fires `POST /api/classify` with **client-capped concurrency** (default **8** workers). Blocks light up in waves (running → settle).
+3. After each result:
+   - **green** = agree with gold **and** confidence ≥ 0.55
+   - **red** = disagree **and** confidence ≥ 0.55
+   - **amber** = confidence **< 0.55** (agree *or* disagree) — low-confidence highlight
+4. **Click a block** → detail panel: title, abstract, Jev Choice + probabilities + confidence (+ noul if present), gold RCT/non_RCT, agree/disagree.
+5. **Persistent scoreboard**: Acc / F1 / mean latency vs BioBERT **96.37%** / **90.85%**, updating live as results arrive.
+
+### Amber rule (documented)
+
+**Confidence < 0.55 → amber**, whether the prediction agrees or disagrees with gold.
+Green/red are reserved for confident agree/disagree (≥ 0.55). Threshold constant: `AMBER_CONF = 0.55` in `web/app.js`.
+
+### API
+
+| Endpoint | Purpose |
+|----------|---------|
+| `GET /api/demo` | 200 rows from `data/demo_200.csv` (pmid, title, abstract, gold) |
+| `POST /api/classify` | body `{title, abstract, pmid}` → Jev via `src/jev_client.py` → pred, probs, confidence, noul, latency_ms |
+| `GET /api/predictions` | cached CSV for **Replay cached** |
+| `GET /api/metrics` | last batch metrics.json |
+
+Server uses `ThreadingHTTPServer` so parallel `POST /api/classify` calls run concurrently; the browser caps worker count.
 
 ## What Jev returns
 
@@ -56,17 +85,16 @@ src/bat4rct.py          # loader + paper splits + stratified 200
 src/jev_client.py       # System One client
 src/run_eval.py         # live/dry runner → CSV + metrics
 src/cli.py              # screenable terminal demo
-src/serve.py + web/     # tiny UI: criteria → flying abstracts → green/red → scoreboard
+src/serve.py + web/     # UI v2: 200-block grid + live parallel classify
 results/                # predictions.csv, metrics.json (from last live run)
 ```
 
+## Live results (demo_200 batch)
 
-## Live results (demo_200)
-
-Recorded in `results/metrics.json` / `results/predictions.csv`:
+Recorded in `results/metrics.json` / `results/predictions.csv` (batch eval, not required for Start):
 
 | | Jev (live) | BioBERT (paper bar) |
-|--|------------|---------------------|
+|---|------------|---------------------|
 | Accuracy | **87.00%** | 96.37% |
 | F1 (RCT) | **85.23%** | 90.85% |
 | Mean latency | **544 ms** | — |
