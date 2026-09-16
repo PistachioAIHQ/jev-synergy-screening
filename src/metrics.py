@@ -5,6 +5,20 @@ from typing import Iterable
 from .config import BIOBERT_ACC, BIOBERT_F1, LABEL_INCLUDE, LABEL_RCT
 
 
+def _percentile(vals: list[float], p: float) -> float:
+    if not vals:
+        return 0.0
+    s = sorted(vals)
+    if len(s) == 1:
+        return s[0]
+    k = (len(s) - 1) * (p / 100.0)
+    f = int(k)
+    c = min(f + 1, len(s) - 1)
+    if f == c:
+        return s[f]
+    return s[f] + (s[c] - s[f]) * (k - f)
+
+
 def compute_metrics(
     golds: Iterable[str],
     preds: Iterable[str],
@@ -15,7 +29,7 @@ def compute_metrics(
 ) -> dict:
     golds = list(golds)
     preds = list(preds)
-    lats = list(latencies_ms)
+    lats = [float(x) for x in latencies_ms]
     n = len(golds)
     if n == 0:
         raise ValueError("empty")
@@ -40,12 +54,13 @@ def compute_metrics(
         "recall": rec,
         "f1": f1,
         "mean_latency_ms": mean_lat,
+        "p50_latency_ms": _percentile(lats, 50),
+        "p95_latency_ms": _percentile(lats, 95),
         "tp": tp,
         "fp": fp,
         "fn": fn,
         "tn": tn,
     }
-    # Back-compat keys used by Bat4RCT UI / README
     out["precision_RCT"] = prec if pos == LABEL_RCT else None
     out["recall_RCT"] = rec if pos == LABEL_RCT else None
     out["f1_RCT"] = f1 if pos == LABEL_RCT else None

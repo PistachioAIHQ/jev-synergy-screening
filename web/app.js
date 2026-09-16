@@ -6,30 +6,34 @@ const DEFAULT_WORKERS = 8;
 const INPUT_USD_PER_MTOK = 0.042;
 
 const MODES = {
-  synergy: {
-    id: "synergy",
-    title: "SYNERGY screening",
-    sub: "Donners_2021 · human include/exclude · questions → code combines",
+  cohen: {
+    id: "cohen",
+    title: "Cohen ADHD triage",
+    sub: "Cohen 2006 Abstract Triage · ADHD · TIAB gold · Choice+Nouls → code",
     positive: "include",
     negative: "exclude",
-    rule: "synergy_donners_choice_and_eligibility_nouls",
+    rule: "cohen_adhd_abstract_triage_choice_and_codes_2_7",
     combine:
       "include iff choice==include\n" +
-      "  AND mentions_emicizumab>=0.5\n" +
-      "  AND is_human_data>=0.5\n" +
-      "  AND reports_pk_or_pkpd>=0.5\n" +
-      "  AND is_secondary_without_pk<0.5",
+      "  AND eligible_population>=0.5\n" +
+      "  AND listed_adhd_drug>=0.5\n" +
+      "  AND eligible_outcome>=0.5\n" +
+      "  AND eligible_study_design>=0.5\n" +
+      "  AND wrong_publication_type<0.5\n" +
+      "  AND inadequate_study_duration<0.5",
     noulOrder: [
-      "mentions_emicizumab",
-      "is_human_data",
-      "reports_pk_or_pkpd",
-      "is_secondary_without_pk",
+      "eligible_population",
+      "listed_adhd_drug",
+      "eligible_outcome",
+      "eligible_study_design",
+      "wrong_publication_type",
+      "inadequate_study_duration",
     ],
-    vsAcc: "human gold (SYNERGY)",
+    vsAcc: "Abstract Triage gold (Cohen)",
     vsF1: "positive = include",
     f1Gloss: "balances catching real includes vs false alarms",
     footer:
-      '<span class="mono">synergy_donners_choice_and_eligibility_nouls</span> · Donners_2021 human screening (not MEDLINE PT) · <a href="https://github.com/asreview/synergy-dataset">SYNERGY CC0</a> · <a href="https://doi.org/10.1007/s40262-021-01042-w">Donners 2021</a> · <a href="https://docs.typesafe.ai/introduction">TypeSafe</a>',
+      '<span class="mono">cohen_adhd_abstract_triage_choice_and_codes_2_7</span> · Cohen 2006 Abstract Triage · ADHD · not Article Triage · <a href="https://dmice.ohsu.edu/cohenaa/systematic-drug-class-review-data.html">Cohen data</a> · <a href="https://doi.org/10.1197/jamia.M1929">Cohen 2006</a> · <a href="https://docs.typesafe.ai/introduction">TypeSafe</a>',
   },
   bat4rct: {
     id: "bat4rct",
@@ -64,7 +68,7 @@ const MODES = {
 
 const $ = (id) => document.getElementById(id);
 
-let currentMode = "synergy";
+let currentMode = "cohen";
 let pubs = [];
 let selectedIdx = null;
 let running = false;
@@ -74,7 +78,7 @@ let questionsMeta = null;
 let runStartedAt = 0;
 
 function cfg() {
-  return MODES[currentMode] || MODES.synergy;
+  return MODES[currentMode] || MODES.cohen;
 }
 
 function sleep(ms) {
@@ -148,11 +152,11 @@ function answerValue(r, key) {
 }
 
 function usedInCombine(id) {
-  if (currentMode === "synergy") {
+  if (currentMode === "cohen") {
     if (id === "label") return "choice==include";
-    if (["mentions_emicizumab", "is_human_data", "reports_pk_or_pkpd"].includes(id))
+    if (["eligible_population", "listed_adhd_drug", "eligible_outcome", "eligible_study_design"].includes(id))
       return "require ≥0.5";
-    if (id === "is_secondary_without_pk") return "require <0.5";
+    if (id === "wrong_publication_type" || id === "inadequate_study_duration") return "require <0.5";
     return "";
   }
   if (["has_random_allocation", "parallel_intervention_arms", "is_cluster_random"].includes(id))
@@ -168,14 +172,14 @@ function usedInCombine(id) {
 
 function posProb(r) {
   const c = cfg();
-  if (currentMode === "synergy")
+  if (currentMode === "cohen")
     return r.p_include ?? r.probabilities?.include ?? r.probabilities?.[c.positive];
   return r.p_RCT ?? r.probabilities?.RCT;
 }
 
 function negProb(r) {
   const c = cfg();
-  if (currentMode === "synergy")
+  if (currentMode === "cohen")
     return r.p_exclude ?? r.probabilities?.exclude ?? r.probabilities?.[c.negative];
   return r.p_non_RCT ?? r.probabilities?.non_RCT;
 }
@@ -379,7 +383,7 @@ async function loadQuestions() {
       const card = document.createElement("div");
       card.className = "q-card";
       card.innerHTML = `
-        <div><span class="qid">eligibility</span><span class="qtype">SYNERGY</span></div>
+        <div><span class="qid">eligibility</span><span class="qtype">Cohen DERP</span></div>
         <p class="instr">${questionsMeta.review.eligibility_criteria}</p>`;
       list.appendChild(card);
     }
@@ -425,8 +429,8 @@ async function loadDemo() {
   showDetail(null);
   updateScoreboard();
   const label =
-    currentMode === "synergy"
-      ? `${pubs.length} records · Donners_2021 · human gold`
+    currentMode === "cohen"
+      ? `${pubs.length} records · Cohen ADHD Abstract Triage · film seed 20260917`
       : `${pubs.length} pubs · r3_ship · MEDLINE PT`;
   $("status").textContent = label;
   await loadQuestions();
@@ -516,7 +520,7 @@ function rowToResult(row) {
     cost_usd: tokenCost(toks),
     rule: row.rule || cfg().rule,
   };
-  if (currentMode === "synergy") {
+  if (currentMode === "cohen") {
     return {
       ...base,
       p_include: Number(row.p_include),
@@ -559,8 +563,8 @@ async function runReplay() {
   if (!res.ok) {
     setBusy(false);
     $("status").textContent =
-      currentMode === "synergy"
-        ? "No results/predictions.csv — run: python -m src.run_synergy_eval"
+      currentMode === "cohen"
+        ? "No results/predictions.csv — run: python -m src.run_cohen_eval --subset film"
         : "No results/bat4rct/predictions.csv — use Start or restore cache";
     return;
   }
@@ -622,7 +626,7 @@ $("btn-close-q").addEventListener("click", () => openDrawer(false));
 $("drawer-backdrop").addEventListener("click", () => openDrawer(false));
 $("sel-mode").addEventListener("change", () => {
   if (running) return;
-  currentMode = $("sel-mode").value === "bat4rct" ? "bat4rct" : "synergy";
+  currentMode = $("sel-mode").value === "bat4rct" ? "bat4rct" : "cohen";
   loadDemo().catch((e) => {
     $("status").textContent = String(e.message || e);
   });

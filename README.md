@@ -1,131 +1,112 @@
-# Jev × SYNERGY — human systematic-review screening
+# Jev × Cohen — ADHD Abstract Triage
 
-Viral life-sciences demo: screen **title + abstract** as **include vs exclude** with [TypeSafe Jev](https://docs.typesafe.ai/introduction) (System One), compared to **human gold labels** from [ASReview SYNERGY](https://github.com/asreview/synergy-dataset) (CC0).
+Viral life-sciences demo: screen **MEDLINE title + abstract** as **include vs exclude** with [TypeSafe Jev](https://docs.typesafe.ai/introduction) (System One), compared to **Abstract Triage** gold from [Cohen et al. 2006](https://doi.org/10.1197/jamia.M1929).
 
-**Gold story = human systematic-review screening — not MEDLINE publication type.**
+**Gold story = Abstract Triage (TIAB) only — not Article Triage, not MEDLINE PT, not SYNERGY.**
 
-Optional mode: **Bat4RCT** r3_ship (MEDLINE PT RCT tagging) remains available in the UI mode toggle.
+Optional mode: **Bat4RCT** r3_ship (MEDLINE PT RCT tagging) remains in the UI toggle.
 
-## Review pick: Donners_2021
+## Why this is fair
 
-| | |
+| Claim | Detail |
 |--|--|
-| Review | Donners et al., *Clin Pharmacokinet* 2021 — emicizumab PK / PK–PD in humans |
-| Key | `Donners_2021` |
-| N | **258** records · **15** included (5.8%) |
-| Why | Smallest medicine SYNERGY review with clear eligibility text; fits a ~200-grid film **without** subsampling. Fallbacks considered: Nelson_2002 (N=366, thinner criteria), Meijboom_2021 (N=882 — too big). |
-| Eligibility (SYNERGY metadata) | *emicizumab studies providing (1) data on humans, (2) original PK data or modeled PK data or PK/PD relationships, and (3) access to the abstract and the full text in English.* |
-| DOI | [10.1007/s40262-021-01042-w](https://doi.org/10.1007/s40262-021-01042-w) |
+| Gold | Cohen **Abstract Triage Status** (`I` = include; anything else = exclude) |
+| Evidence | MEDLINE **title + abstract** fetched by PMID (same modality as gold) |
+| Never | Article Triage / full-text labels · SYNERGY `label_included` |
+| Topic | ADHD (N=851; 84 include ≈ 9.9%) |
+| Eligibility | Oregon DERP ADHD pharmacologic review (population, listed drugs, design, outcomes, duration / pub-type excludes) |
+| Encode | Jev Choice `include\|exclude` + atomic Nouls for Cohen reason codes **2–7**; combine in code; shown in Questions drawer |
 
-Committed demo table: `data/donners_258.csv` (+ `data/donners_metadata.json`, `data/SYNERGY_LICENSE_NOTE.md`).
+Custom open data from the authors’ page — **not CC-BY**. Cite Cohen 2006 (see `data/COHEN_LICENSE_NOTE.md`).
 
-## Default rule: Choice ∩ eligibility nouls
+## Headline metrics (include class)
 
-**Choice** `include` \| `exclude` encodes Donners criteria, plus atomic **Nouls** (shown in Questions drawer). Shipped combine (one iteration after Choice-only):
+### Film grid (stratified N=200, seed **20260917**)
+
+| Acc | Prec | Rec | F1 | TP/FP/FN/TN | Mean lat | Est. $ |
+|-----|------|-----|----|-------------|----------|--------|
+| **91.0%** | **54.2%** | **65.0%** | **59.1%** | 13/11/7/169 | ~528 ms | ~$0.013 |
+
+Film uses a stratified subsample so the grid is filmable; prevalence preserved (20/180). Metrics above are on that film set and labeled as such.
+
+### Full ADHD Abstract Triage (N=851)
+
+| Acc | Prec | Rec | F1 | TP/FP/FN/TN | Mean / p50 / p95 lat | Est. $ |
+|-----|------|-----|----|-------------|----------------------|--------|
+| **93.8%** | **70.1%** | **64.3%** | **67.1%** | 54/23/30/744 | 526 / 522 / 624 ms | **~$0.056** |
+
+Artifacts: `results/full/`.
+
+### Full ADHD Abstract Triage (N=851) — re-run
+
+See `results/full/metrics.json` after:
+
+```bash
+python -m src.run_cohen_eval --subset full --workers 8 \
+  --out-csv results/full/predictions.csv --out-metrics results/full/metrics.json
+```
+
+### Fair H2H vs Anthropic (stratified N=100, seed **20260916**)
+
+Same 100 PMIDs · same TIAB · same DERP criteria text.
+
+| System | Acc | Prec | Rec | F1 | TP/FP/FN/TN | Mean / p50 / p95 lat | $ |
+|--------|-----|------|-----|----|-------------|----------------------|---|
+| **Jev** (`jev-1.13.0`) | **94.0%** | **66.7%** | **80.0%** | **72.7%** | 8/4/2/86 | 525 / 523 / 601 ms | **$0.0065** |
+| Anthropic (`claude-sonnet-4-5-20250929`) | 93.0% | 60.0% | 90.0% | 72.0% | 9/6/1/84 | 1297 / 1292 / 1497 ms | $0.586 |
+
+Artifacts: `results/h2h/`.
+
+Anthropic protocol: structured tool `include|exclude` (JSON schema) — **no CoT essay**.
+
+> WSS@95 from Cohen 2006 is a **historical footnote only** — not the demo headline.
+
+## Default rule
 
 ```
 include iff choice==include
-  AND mentions_emicizumab>=0.5
-  AND is_human_data>=0.5
-  AND reports_pk_or_pkpd>=0.5
-  AND is_secondary_without_pk<0.5
+  AND eligible_population>=0.5
+  AND listed_adhd_drug>=0.5
+  AND eligible_outcome>=0.5
+  AND eligible_study_design>=0.5
+  AND wrong_publication_type<0.5
+  AND inadequate_study_duration<0.5
 ```
 
-| Variant | Acc | F1 (include) | TP/FP/FN/TN |
-|---------|-----|--------------|-------------|
-| Choice-only (not shipped) | 86.82% | 39.29% | 11/30/4/213 |
-| **Shipped (Choice ∧ nouls)** | **91.86%** | **48.78%** | **10/16/5/227** |
+(`src/cohen_adhd.py`)
 
-Precision/Recall (include): **38.46% / 66.67%**. Mean latency ~**517 ms**. Est. cost ~**$0.013** @ $0.042/MTok input (output free) for full N=258.
-
-> Class is sparse (5.8% include). Acc stays high; F1 is limited by abstract-only PK cues (several gold includes barely mention PK).
-
-Implemented in `src/synergy_screening.py` + `src/jev_client.py`.
-
-## Film path (default = SYNERGY)
+## Film path
 
 ```bash
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 export TYPESAFE_API_KEY="$(tr -d '\n' < ~/.config/typesafe/api_key)"
 
-# live eval → results/predictions.csv + results/metrics.json
-python -m src.run_synergy_eval --workers 8
-
-# UI
+python -m src.run_cohen_eval --subset film --workers 8
 python -m src.serve --port 8765
-# open http://127.0.0.1:8765/
-# → Mode = SYNERGY (Donners)  [default]
-# → Start = live parallel Jev
-# → Replay cached = animate results/predictions.csv
-# → Questions = Choice/Noul map + combine + eligibility block quote
-# → Mode = Bat4RCT (MEDLINE PT) for optional r3_ship demo
+# http://127.0.0.1:8765/ → Mode Cohen ADHD (default) → Start or Replay cached
 ```
 
-Dry-run: `python -m src.run_synergy_eval --dry-run`
+H2H:
 
-### UI behavior
-
-1. Grid of all **258** Donners records (dense blocks).
-2. **Start** → `POST /api/classify` with `mode=synergy` (concurrency selectable).
-3. Green agree / red disagree / amber conf &lt; 0.55.
-4. Click → title, abstract, combine pred, Choice, probs, each noul, gold, $, latency.
-5. Scoreboard: Acc / F1 (include) / mean latency / wall / est. $.
-6. Mode toggle → Bat4RCT optional (200 pubs, BioBERT bar, `results/bat4rct/`).
+```bash
+export ANTHROPIC_API_KEY="$(tr -d '\n' < ~/.config/anthropic/api_key)"
+python -m src.run_h2h --workers 6
+```
 
 ### API
 
-| Endpoint | Purpose |
-|----------|---------|
-| `GET /api/demo?mode=synergy\|bat4rct` | demo rows |
-| `GET /api/questions?mode=…` | question map + combine |
-| `POST /api/classify` | body includes `mode` |
-| `GET /api/predictions?mode=…` | film cache |
-| `GET /api/metrics?mode=…` | last metrics |
-| `GET /api/health` | modes + rules |
+`GET /api/demo?mode=cohen|bat4rct` · `/api/questions` · `POST /api/classify` · `/api/predictions` · `/api/metrics` · `/api/health`
 
-### Jev
+Jev: `POST https://api.typesafe.ai/v1/systemone` · `jev-latest` · questions **map** · **$0.042/MTok** input.
 
-`POST https://api.typesafe.ai/v1/systemone` · model `jev-latest` · `questions` is a **map** (Choice + Nouls). No free-text generation.
+## Optional: Bat4RCT
 
-## Optional: Bat4RCT (MEDLINE PT)
+`data/demo_200.csv` · r3_ship Acc 93.5% / F1 93.12% · `results/bat4rct/`
 
-Still shipped under mode **Bat4RCT**:
+## Citation
 
-- Data: `data/demo_200.csv` (100 RCT / 100 non_RCT)
-- Rule: r3_ship (CD Choice + round-3 nouls) — Acc **93.5%** / F1 **93.12%** vs BioBERT 96.37% / 90.85%
-- Cache: `results/bat4rct/predictions.csv`
-- Eval: `python -m src.run_eval --workers 8`
+Cohen AM, Hersh WR, Peterson K, Yen PY. *JAMIA* 2006;13(2):206–219. doi:10.1197/jamia.M1929  
+Data: https://dmice.ohsu.edu/cohenaa/systematic-drug-class-review-data.html
 
-## Layout
-
-```
-data/donners_258.csv          # SYNERGY default (committed)
-data/donners_metadata.json
-data/demo_200.csv             # Bat4RCT optional
-src/synergy_screening.py      # Donners questions + combine
-src/jev_client.py             # classify_synergy / classify_bat4rct
-src/run_synergy_eval.py       # default film runner
-src/serve.py + web/           # dual-mode UI
-results/predictions.csv       # SYNERGY film cache
-results/bat4rct/              # optional MEDLINE PT cache
-```
-
-## Auth
-
-```bash
-export TYPESAFE_API_KEY=…          # preferred
-# or ~/.config/typesafe/api_key
-```
-
-**Never commit the key.**
-
-## Rebuilding Donners from SYNERGY (optional)
-
-```bash
-pip install 'synergy-dataset==1.2'
-python -c "from synergy_dataset.base import download_raw_subset; download_raw_subset('Donners_2021')"
-# then export title/abstract/label_included → data/donners_258.csv
-```
-
-Classic SYNERGY source: doi:10.34894/HE6NAQ (CC0).
+**Never commit API keys.**

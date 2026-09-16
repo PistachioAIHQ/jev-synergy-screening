@@ -1,4 +1,4 @@
-"""Static+API server — default SYNERGY Donners; optional Bat4RCT r3_ship mode."""
+"""Static+API server — default Cohen ADHD Abstract Triage; optional Bat4RCT."""
 from __future__ import annotations
 
 import argparse
@@ -9,26 +9,27 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
+from .cohen_adhd import (
+    COMBINE_TEXT as COHEN_COMBINE,
+    NOUL_KEYS as COHEN_NOUL_KEYS,
+    RULE_ID as COHEN_RULE,
+    build_questions as build_cohen_questions,
+    load_metadata as load_cohen_metadata,
+)
 from .config import (
+    ROOT,
+    ADHD_FILM_CSV,
     BAT4RCT_METRICS_JSON,
     BAT4RCT_PREDICTIONS_CSV,
     DEMO_CSV,
-    DONNERS_CSV,
     METRICS_JSON,
     PREDICTIONS_CSV,
     ROOT,
     WEB_DIR,
 )
 from .hybrid import ALL_NOUL_KEYS as BAT_NOUL_KEYS
-from .hybrid import build_round3_questions, hybrid_combine
+from .hybrid import build_hybrid_questions as build_round3_questions
 from .jev_client import classify, load_api_key
-from .synergy_screening import (
-    COMBINE_TEXT as SYNERGY_COMBINE,
-    NOUL_KEYS as SYNERGY_NOUL_KEYS,
-    RULE_ID as SYNERGY_RULE,
-    build_questions as build_synergy_questions,
-    load_metadata,
-)
 
 INPUT_USD_PER_MTOK = 0.042
 OUTPUT_USD_PER_MTOK = 0.0
@@ -60,11 +61,13 @@ def _cost_usd(input_tokens: float | int | None) -> float | None:
         return None
 
 
-def _mode_from_path(path: str, query: dict) -> str:
-    q = (query.get("mode") or ["synergy"])[0].strip().lower()
+def _mode_from_query(query: dict) -> str:
+    q = (query.get("mode") or ["cohen"])[0].strip().lower()
     if q in ("bat4rct", "bat", "medline", "rct"):
         return "bat4rct"
-    return "synergy"
+    if q in ("synergy", "donners"):
+        return "synergy"  # dead path if data present
+    return "cohen"
 
 
 class Handler(SimpleHTTPRequestHandler):
@@ -80,7 +83,7 @@ class Handler(SimpleHTTPRequestHandler):
         parsed = urlparse(self.path)
         path = parsed.path
         query = parse_qs(parsed.query)
-        mode = _mode_from_path(path, query)
+        mode = _mode_from_query(query)
         if path == "/api/demo":
             return self._demo(mode)
         if path == "/api/predictions":
@@ -90,18 +93,19 @@ class Handler(SimpleHTTPRequestHandler):
         if path == "/api/questions":
             return self._questions(mode)
         if path == "/api/health":
-            meta = load_metadata()
+            meta = load_cohen_metadata()
             return self._json(
                 {
                     "ok": True,
-                    "ui": "v3-synergy",
-                    "default_mode": "synergy",
-                    "modes": ["synergy", "bat4rct"],
-                    "synergy_review": meta.get("review"),
-                    "synergy_rule": SYNERGY_RULE,
+                    "ui": "v4-cohen",
+                    "default_mode": "cohen",
+                    "modes": ["cohen", "bat4rct"],
+                    "cohen_topic": meta.get("topic") or "ADHD",
+                    "cohen_rule": COHEN_RULE,
                     "bat4rct_rule": BAT_RULE,
                     "input_usd_per_mtok": INPUT_USD_PER_MTOK,
                     "output_usd_per_mtok": OUTPUT_USD_PER_MTOK,
+                    "fairness": meta.get("fairness"),
                 }
             )
         return super().do_GET()
@@ -140,48 +144,54 @@ class Handler(SimpleHTTPRequestHandler):
                 }
             )
 
-        csv_path = DONNERS_CSV
+        # Default: Cohen film subsample (stratified 200; seed 20260917)
+        csv_path = ADHD_FILM_CSV
         if not csv_path.exists():
             return self._json({"error": f"missing {csv_path.name}"}, status=404)
-        meta = load_metadata()
+        meta = load_cohen_metadata()
         rows = []
         with csv_path.open(encoding="utf-8") as f:
             for r in csv.DictReader(f):
-                rid = r.get("record_id") or r.get("openalex_id") or ""
+                pmid = r.get("pmid") or r.get("record_id") or ""
                 rows.append(
                     {
                         "demo_idx": int(r.get("demo_idx") or 0),
-                        "pmid": rid,
-                        "record_id": rid,
-                        "doi": r.get("doi") or "",
+                        "pmid": pmid,
+                        "record_id": pmid,
                         "title": r.get("title") or "",
                         "abstract": r.get("abstract") or "",
                         "gold": r.get("gold") or "",
-                        "label_included": r.get("label_included"),
+                        "abs_triage": r.get("abs_triage") or "",
+                        "abs_reason": r.get("abs_reason") or "",
                     }
                 )
+        film = (meta.get("film_subsample") or {}) if isinstance(meta, dict) else {}
         return self._json(
             {
-                "mode": "synergy",
-                "task": "ASReview SYNERGY human systematic-review screening",
-                "review": meta.get("review"),
-                "review_title": meta.get("publication_title"),
-                "eligibility_criteria": meta.get("eligibility_criteria"),
-                "why": meta.get("why"),
+                "mode": "cohen",
+                "task": "Cohen 2006 Abstract Triage — ADHD (TIAB gold)",
+                "dataset": meta.get("dataset"),
+                "topic": "ADHD",
+                "eligibility": meta.get("eligibility"),
+                "paper_doi": meta.get("paper_doi") or meta.get("paper_doi"),
+                "fairness": meta.get("fairness"),
+                "film_seed": film.get("seed") or 20260917,
+                "film_n": len(rows),
+                "full_n": meta.get("n_full") or 851,
                 "rows": rows,
                 "n": len(rows),
                 "positive_label": "include",
-                "n_included": meta.get("n_included"),
+                "n_include": film.get("n_include"),
             }
         )
 
     def _questions(self, mode: str) -> None:
         if mode == "bat4rct":
-            qs = build_round3_questions()
+            qs = build_hybrid_questions()
             rule, combine = BAT_RULE, BAT_COMBINE
         else:
-            qs = build_synergy_questions()
-            rule, combine = SYNERGY_RULE, SYNERGY_COMBINE
+            qs = build_cohen_questions()
+            rule, combine = COHEN_RULE, COHEN_COMBINE
         items = []
         for qid, q in qs.items():
             items.append(
@@ -193,15 +203,15 @@ class Handler(SimpleHTTPRequestHandler):
                 }
             )
         payload = {
-            "mode": mode,
+            "mode": mode if mode == "bat4rct" else "cohen",
             "rule": rule,
             "combine": combine,
             "questions": items,
             "input_usd_per_mtok": INPUT_USD_PER_MTOK,
             "output_usd_per_mtok": OUTPUT_USD_PER_MTOK,
         }
-        if mode == "synergy":
-            payload["review"] = load_metadata()
+        if mode != "bat4rct":
+            payload["review"] = load_cohen_metadata()
         return self._json(payload)
 
     def _predictions(self, mode: str) -> None:
@@ -220,11 +230,11 @@ class Handler(SimpleHTTPRequestHandler):
         except json.JSONDecodeError:
             return self._json({"error": "invalid JSON"}, status=400)
 
-        mode = (body.get("mode") or "synergy").strip().lower()
+        mode = (body.get("mode") or "cohen").strip().lower()
         if mode in ("bat", "medline", "rct"):
             mode = "bat4rct"
-        if mode not in ("synergy", "bat4rct"):
-            mode = "synergy"
+        if mode not in ("cohen", "bat4rct"):
+            mode = "cohen"
 
         title = (body.get("title") or "").strip()
         abstract = (body.get("abstract") or "").strip()
@@ -273,10 +283,10 @@ class Handler(SimpleHTTPRequestHandler):
                 }
             )
 
-        nouls = {k: _finite(out.get(k)) for k in SYNERGY_NOUL_KEYS}
+        nouls = {k: _finite(out.get(k)) for k in COHEN_NOUL_KEYS}
         return self._json(
             {
-                "mode": mode,
+                "mode": "cohen",
                 "pmid": pmid,
                 "pred": out.get("pred"),
                 "choice": out.get("choice"),
@@ -290,8 +300,8 @@ class Handler(SimpleHTTPRequestHandler):
                 "model": out.get("model"),
                 "usage": usage or None,
                 "input_tokens": input_tokens,
-                "cost_usd": _cost_usd(input_tokens),
-                "rule": out.get("rule") or SYNERGY_RULE,
+                "cost_usd": out.get("cost_usd") if out.get("cost_usd") is not None else _cost_usd(input_tokens),
+                "rule": out.get("rule") or COHEN_RULE,
             }
         )
 
@@ -313,7 +323,7 @@ class Handler(SimpleHTTPRequestHandler):
         body = json.dumps(obj, allow_nan=False).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
-        self.send_header("Content-Length", str(body.__len__()))
+        self.send_header("Content-Length", str(len(body)))
         self._cors()
         self.end_headers()
         self.wfile.write(body)
@@ -326,16 +336,16 @@ def main() -> None:
     p = argparse.ArgumentParser()
     p.add_argument("--port", type=int, default=8765)
     args = p.parse_args()
-    if not DONNERS_CSV.exists():
-        print(f"WARN: {DONNERS_CSV} missing — SYNERGY mode needs data/donners_258.csv")
+    if not ADHD_FILM_CSV.exists():
+        print(f"WARN: {ADHD_FILM_CSV} missing — Cohen film grid unavailable")
     if not PREDICTIONS_CSV.exists():
-        print(f"WARN: {PREDICTIONS_CSV} missing — Replay cached needs film cache (run run_synergy_eval)")
+        print(f"WARN: {PREDICTIONS_CSV} missing — Replay needs python -m src.run_cohen_eval")
     if not DEMO_CSV.exists():
-        print(f"WARN: {DEMO_CSV} missing — Bat4RCT optional mode unavailable until prepare_demo")
+        print(f"WARN: {DEMO_CSV} missing — Bat4RCT optional mode unavailable")
     httpd = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
-    print(f"Demo UI (SYNERGY default · Bat4RCT optional) → http://127.0.0.1:{args.port}/")
+    print(f"Demo UI (Cohen ADHD default · Bat4RCT optional) → http://127.0.0.1:{args.port}/")
     print(f"Repo root {ROOT}")
-    print("GET /api/demo?mode=synergy|bat4rct · /api/questions · POST /api/classify · /api/predictions")
+    print("GET /api/demo?mode=cohen|bat4rct · /api/questions · POST /api/classify · /api/predictions")
     httpd.serve_forever()
 
 

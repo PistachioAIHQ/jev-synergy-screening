@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>Jev × SYNERGY — human screening</title>
+<title>Jev × Cohen — ADHD Abstract Triage</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet"/>
 <link rel="stylesheet" href="styles.css"/>
@@ -13,14 +13,14 @@
     <div class="brand">
       <div class="mark">Jev</div>
       <div>
-        <h1 id="hdr-title">SYNERGY screening</h1>
-        <p class="sub" id="hdr-sub">Donners_2021 · human include/exclude · questions → code combines</p>
+        <h1 id="hdr-title">Cohen ADHD triage</h1>
+        <p class="sub" id="hdr-sub">Cohen 2006 Abstract Triage · ADHD · TIAB gold · Choice+Nouls → code</p>
       </div>
     </div>
     <div class="controls">
       <label class="field">Mode
-        <select id="sel-mode" title="Primary film path = SYNERGY">
-          <option value="synergy" selected>SYNERGY (Donners)</option>
+        <select id="sel-mode" title="Primary film path = Cohen ADHD">
+          <option value="cohen" selected>Cohen ADHD (Abstract Triage)</option>
           <option value="bat4rct">Bat4RCT (MEDLINE PT)</option>
         </select>
       </label>
@@ -44,7 +44,7 @@
     <div class="metric">
       <span class="label">Acc</span>
       <span class="big mono" id="val-acc">—</span>
-      <span class="vs" id="vs-acc">human gold (SYNERGY)</span>
+      <span class="vs" id="vs-acc">Abstract Triage gold (Cohen)</span>
       <div class="track"><div class="fill" id="bar-acc"></div></div>
     </div>
     <div class="metric">
@@ -125,10 +125,10 @@
   <div class="drawer-backdrop" id="drawer-backdrop" hidden></div>
 
   <footer id="footer">
-    <span class="mono">synergy_donners_choice_and_eligibility_nouls</span>
-    · Donners_2021 human screening (not MEDLINE PT)
-    · <a href="https://github.com/asreview/synergy-dataset">SYNERGY CC0</a>
-    · <a href="https://doi.org/10.1007/s40262-021-01042-w">Donners 2021</a>
+    <span class="mono">cohen_adhd_abstract_triage_choice_and_codes_2_7</span>
+    · Cohen 2006 Abstract Triage · ADHD · not Article Triage
+    · <a href="https://dmice.ohsu.edu/cohenaa/systematic-drug-class-review-data.html">Cohen data</a>
+    · <a href="https://doi.org/10.1197/jamia.M1929">Cohen 2006</a>
     · <a href="https://docs.typesafe.ai/introduction">TypeSafe</a>
   </footer>
   <script src="app.js"></script>

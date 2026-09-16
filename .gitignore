@@ -17,3 +17,4 @@ results/ablations_predictions.json
 api_key
 **/api_key
 .typesafe/
+logs/
