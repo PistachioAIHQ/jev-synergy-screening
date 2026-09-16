@@ -1,118 +1,131 @@
-# Jev × Bat4RCT — RCT screening demo
+# Jev × SYNERGY — human systematic-review screening
 
-Viral life-sciences demo: classify MEDLINE **title + abstract** as **RCT vs non_RCT** with [TypeSafe Jev](https://docs.typesafe.ai/introduction) (System One), compare to gold labels from **Bat4RCT**, and scoreboard against the paper’s **BioBERT** baseline.
+Viral life-sciences demo: screen **title + abstract** as **include vs exclude** with [TypeSafe Jev](https://docs.typesafe.ai/introduction) (System One), compared to **human gold labels** from [ASReview SYNERGY](https://github.com/asreview/synergy-dataset) (CC0).
 
-> Repo name is historical (`jev-synergy-screening`); **v1 dataset is Bat4RCT**, not SYNERGY.
+**Gold story = human systematic-review screening — not MEDLINE publication type.**
 
-## Default rule: r3_ship (NOT psych@0.5)
+Optional mode: **Bat4RCT** r3_ship (MEDLINE PT RCT tagging) remains available in the UI mode toggle.
 
-**CD medium Choice** + round-3 nouls (`results/round3/questions_v3.json`), combined as:
+## Review pick: Donners_2021
+
+| | |
+|--|--|
+| Review | Donners et al., *Clin Pharmacokinet* 2021 — emicizumab PK / PK–PD in humans |
+| Key | `Donners_2021` |
+| N | **258** records · **15** included (5.8%) |
+| Why | Smallest medicine SYNERGY review with clear eligibility text; fits a ~200-grid film **without** subsampling. Fallbacks considered: Nelson_2002 (N=366, thinner criteria), Meijboom_2021 (N=882 — too big). |
+| Eligibility (SYNERGY metadata) | *emicizumab studies providing (1) data on humans, (2) original PK data or modeled PK data or PK/PD relationships, and (3) access to the abstract and the full text in English.* |
+| DOI | [10.1007/s40262-021-01042-w](https://doi.org/10.1007/s40262-021-01042-w) |
+
+Committed demo table: `data/donners_258.csv` (+ `data/donners_metadata.json`, `data/SYNERGY_LICENSE_NOTE.md`).
+
+## Default rule: Choice ∩ eligibility nouls
+
+**Choice** `include` \| `exclude` encodes Donners criteria, plus atomic **Nouls** (shown in Questions drawer). Shipped combine (one iteration after Choice-only):
 
 ```
-RCT iff choice==RCT
-  OR ((rand|cluster|parallel)>=0.5 AND secondary<0.5 AND protocol<0.5)
-  OR (reports_or_reanalyzes_an_rct>=0.5 AND is_review_or_meta<0.5)
-  OR (experimental_allocation_implied>=0.95 AND secondary<0.5 AND protocol<0.5 AND review<0.5)
+include iff choice==include
+  AND mentions_emicizumab>=0.5
+  AND is_human_data>=0.5
+  AND reports_pk_or_pkpd>=0.5
+  AND is_secondary_without_pk<0.5
 ```
 
-Implemented in `src/hybrid.py` + `src/jev_client.py`. **Psych OR at 0.5 is not shipped** (FP=2).
+| Variant | Acc | F1 (include) | TP/FP/FN/TN |
+|---------|-----|--------------|-------------|
+| Choice-only (not shipped) | 86.82% | 39.29% | 11/30/4/213 |
+| **Shipped (Choice ∧ nouls)** | **91.86%** | **48.78%** | **10/16/5/227** |
 
-| Variant | Acc | F1 | TP/FP/FN/TN |
-|---------|-----|----|-------------|
-| CD choice-only | 87.00% | 85.23% | 75/1/25/99 |
-| Hybrid R2 | 89.5% | 88.40% | 80/1/20/99 |
-| **r3_ship (default)** | **93.5%** | **93.12%** | **88/1/12/99** |
-| Psych@0.5 (not shipped) | 93.0% | 92.63% | 88/2/12/98 |
+Precision/Recall (include): **38.46% / 66.67%**. Mean latency ~**517 ms**. Est. cost ~**$0.013** @ $0.042/MTok input (output free) for full N=258.
 
-Δ vs hybrid R2: **+4.0 pp Acc / +4.72 pp F1**, FP unchanged (1).
+> Class is sparse (5.8% include). Acc stays high; F1 is limited by abstract-only PK cues (several gold includes barely mention PK).
 
-## BioBERT bar (on-screen)
+Implemented in `src/synergy_screening.py` + `src/jev_client.py`.
 
-From Kim et al., *PLOS ONE* 2023 ([doi:10.1371/journal.pone.0283342](https://doi.org/10.1371/journal.pone.0283342)), BioBERT **title+abstract**:
-
-| Metric | BioBERT | Jev r3_ship |
-|--------|---------|-------------|
-| Accuracy | **96.37%** | **93.5%** |
-| F1 (RCT) | **90.85%** | **93.12%** |
-
-Demo set: **200** abstracts, stratified **100 RCT / 100 non_RCT** from the Bat4RCT **test** split.
-
-## Cost & time (UI)
-
-Scoreboard shows **mean latency**, **wall time**, and **estimated $** at **$0.042 / MTok input** (output free).
-- **Start (live):** uses `usage.input_tokens` from each Jev response when present.
-- **Replay cached:** film cache has no live usage log; UI uses `input_tokens_est` (char/4 + question overhead) and labels it **est**.
-
-## Film path — UI v2 (grid + questions drawer)
+## Film path (default = SYNERGY)
 
 ```bash
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 export TYPESAFE_API_KEY="$(tr -d '\n' < ~/.config/typesafe/api_key)"
+
+# live eval → results/predictions.csv + results/metrics.json
+python -m src.run_synergy_eval --workers 8
+
+# UI
 python -m src.serve --port 8765
 # open http://127.0.0.1:8765/
-# → Start = live parallel r3_ship Jev
-# → Replay cached = animate results/predictions.csv (no API credits)
-# → Questions = full Choice/Noul map + combine rule
+# → Mode = SYNERGY (Donners)  [default]
+# → Start = live parallel Jev
+# → Replay cached = animate results/predictions.csv
+# → Questions = Choice/Noul map + combine + eligibility block quote
+# → Mode = Bat4RCT (MEDLINE PT) for optional r3_ship demo
 ```
 
-### UI v2 behavior
+Dry-run: `python -m src.run_synergy_eval --dry-run`
 
-1. **Grid of all 200** pubs as dense blocks.
-2. **Start** fires `POST /api/classify` with client-capped concurrency (default **8**).
-3. After each result: **green** agree (conf ≥ 0.55), **red** disagree (conf ≥ 0.55), **amber** conf < 0.55.
-4. **Click a block** → detail: title, abstract, combine pred, Choice, probs, confidence, **each noul answer**, gold, agree/disagree, tokens/cost.
-5. **Questions** drawer: every Choice/Noul (instructions + criteria) + the code combine rule.
-6. **Scoreboard**: Acc / F1 (with F1 gloss) / mean latency / wall time / est. cost vs BioBERT **96.37%** / **90.85%** (film settles at **93.5%** / **93.12%**).
+### UI behavior
 
-### Amber rule
-
-**Confidence < 0.55 → amber**, whether the prediction agrees or disagrees with gold.
+1. Grid of all **258** Donners records (dense blocks).
+2. **Start** → `POST /api/classify` with `mode=synergy` (concurrency selectable).
+3. Green agree / red disagree / amber conf &lt; 0.55.
+4. Click → title, abstract, combine pred, Choice, probs, each noul, gold, $, latency.
+5. Scoreboard: Acc / F1 (include) / mean latency / wall / est. $.
+6. Mode toggle → Bat4RCT optional (200 pubs, BioBERT bar, `results/bat4rct/`).
 
 ### API
 
 | Endpoint | Purpose |
 |----------|---------|
-| `GET /api/demo` | 200 rows from `data/demo_200.csv` |
-| `GET /api/questions` | full r3 question map + combine string |
-| `POST /api/classify` | r3_ship pred + answers + usage/cost |
-| `GET /api/predictions` | cached CSV for **Replay cached** |
-| `GET /api/metrics` | last batch metrics.json |
+| `GET /api/demo?mode=synergy\|bat4rct` | demo rows |
+| `GET /api/questions?mode=…` | question map + combine |
+| `POST /api/classify` | body includes `mode` |
+| `GET /api/predictions?mode=…` | film cache |
+| `GET /api/metrics?mode=…` | last metrics |
+| `GET /api/health` | modes + rules |
 
-## What Jev returns (r3_ship)
+### Jev
 
-`POST https://api.typesafe.ai/v1/systemone` · model `jev-latest` · `questions` is a **map**:
+`POST https://api.typesafe.ai/v1/systemone` · model `jev-latest` · `questions` is a **map** (Choice + Nouls). No free-text generation.
 
-- **Choice** `label` — CD medium wording
-- **Noul** R2: `has_random_allocation`, `parallel_intervention_arms`, `is_cluster_random`, `is_secondary_or_nested_only`, `is_protocol_or_single_arm`
-- **Noul** R3: `reports_or_reanalyzes_an_rct`, `parent_study_was_rct`, `experimental_allocation_implied`, `is_review_or_meta`
+## Optional: Bat4RCT (MEDLINE PT)
 
-Server applies `hybrid_combine` in `src/hybrid.py` (aggressive off; exp gate **0.95**).
+Still shipped under mode **Bat4RCT**:
+
+- Data: `data/demo_200.csv` (100 RCT / 100 non_RCT)
+- Rule: r3_ship (CD Choice + round-3 nouls) — Acc **93.5%** / F1 **93.12%** vs BioBERT 96.37% / 90.85%
+- Cache: `results/bat4rct/predictions.csv`
+- Eval: `python -m src.run_eval --workers 8`
 
 ## Layout
 
 ```
-data/demo_200.csv
-src/hybrid.py           # r3_ship combine (default)
-src/jev_client.py       # System One client (round-3 questions)
-src/run_eval.py         # live/dry runner → CSV + metrics
-src/serve.py + web/     # UI v2 grid + questions drawer + cost/time
-results/predictions.csv # r3_ship film cache (93.5% / 93.12%)
-results/metrics.json
-results/round3/         # ANALYSIS, questions_v3, preds_round3, summary_round3, …
+data/donners_258.csv          # SYNERGY default (committed)
+data/donners_metadata.json
+data/demo_200.csv             # Bat4RCT optional
+src/synergy_screening.py      # Donners questions + combine
+src/jev_client.py             # classify_synergy / classify_bat4rct
+src/run_synergy_eval.py       # default film runner
+src/serve.py + web/           # dual-mode UI
+results/predictions.csv       # SYNERGY film cache
+results/bat4rct/              # optional MEDLINE PT cache
 ```
 
 ## Auth
 
 ```bash
 export TYPESAFE_API_KEY=…          # preferred
-# or ~/.config/typesafe/api_key (mode 600)
+# or ~/.config/typesafe/api_key
 ```
 
-**Never commit the API key.** `.gitignore` excludes `api_key`, `.env`, and raw Bat4RCT zip/txt.
+**Never commit the key.**
 
-## Cite
+## Rebuilding Donners from SYNERGY (optional)
 
-- Kim et al. Bat4RCT. PLOS ONE 2023. https://doi.org/10.1371/journal.pone.0283342
-- Data/code: https://github.com/jennak22/Bat4RCT
-- TypeSafe docs: https://docs.typesafe.ai/introduction
+```bash
+pip install 'synergy-dataset==1.2'
+python -c "from synergy_dataset.base import download_raw_subset; download_raw_subset('Donners_2021')"
+# then export title/abstract/label_included → data/donners_258.csv
+```
+
+Classic SYNERGY source: doi:10.34894/HE6NAQ (CC0).

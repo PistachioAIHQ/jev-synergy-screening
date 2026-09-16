@@ -1,31 +1,70 @@
-/** UI v2 — r3_ship default, Acc/F1 + cost/time, questions drawer. */
+/** UI — default SYNERGY Donners human screening; optional Bat4RCT r3_ship. */
 const BIO_ACC = 96.37;
 const BIO_F1 = 90.85;
 const AMBER_CONF = 0.55;
 const DEFAULT_WORKERS = 8;
 const INPUT_USD_PER_MTOK = 0.042;
-const RULE_ID = "r3_ship_cd_choice_plus_reports_exp095";
 
-const NOUL_ORDER = [
-  "has_random_allocation",
-  "parallel_intervention_arms",
-  "is_cluster_random",
-  "is_secondary_or_nested_only",
-  "is_protocol_or_single_arm",
-  "reports_or_reanalyzes_an_rct",
-  "parent_study_was_rct",
-  "experimental_allocation_implied",
-  "is_review_or_meta",
-];
-
-const COMBINE_TEXT =
-  "RCT iff choice==RCT\n" +
-  "  OR ((rand|cluster|parallel)>=0.5 AND secondary<0.5 AND protocol<0.5)\n" +
-  "  OR (reports>=0.5 AND review<0.5)\n" +
-  "  OR (exp>=0.95 AND secondary<0.5 AND protocol<0.5 AND review<0.5)";
+const MODES = {
+  synergy: {
+    id: "synergy",
+    title: "SYNERGY screening",
+    sub: "Donners_2021 · human include/exclude · questions → code combines",
+    positive: "include",
+    negative: "exclude",
+    rule: "synergy_donners_choice_and_eligibility_nouls",
+    combine:
+      "include iff choice==include\n" +
+      "  AND mentions_emicizumab>=0.5\n" +
+      "  AND is_human_data>=0.5\n" +
+      "  AND reports_pk_or_pkpd>=0.5\n" +
+      "  AND is_secondary_without_pk<0.5",
+    noulOrder: [
+      "mentions_emicizumab",
+      "is_human_data",
+      "reports_pk_or_pkpd",
+      "is_secondary_without_pk",
+    ],
+    vsAcc: "human gold (SYNERGY)",
+    vsF1: "positive = include",
+    f1Gloss: "balances catching real includes vs false alarms",
+    footer:
+      '<span class="mono">synergy_donners_choice_and_eligibility_nouls</span> · Donners_2021 human screening (not MEDLINE PT) · <a href="https://github.com/asreview/synergy-dataset">SYNERGY CC0</a> · <a href="https://doi.org/10.1007/s40262-021-01042-w">Donners 2021</a> · <a href="https://docs.typesafe.ai/introduction">TypeSafe</a>',
+  },
+  bat4rct: {
+    id: "bat4rct",
+    title: "Bat4RCT screening",
+    sub: "r3_ship · MEDLINE PT · RCT vs non_RCT (optional mode)",
+    positive: "RCT",
+    negative: "non_RCT",
+    rule: "r3_ship_cd_choice_plus_reports_exp095",
+    combine:
+      "RCT iff choice==RCT\n" +
+      "  OR ((rand|cluster|parallel)>=0.5 AND secondary<0.5 AND protocol<0.5)\n" +
+      "  OR (reports>=0.5 AND review<0.5)\n" +
+      "  OR (exp>=0.95 AND secondary<0.5 AND protocol<0.5 AND review<0.5)",
+    noulOrder: [
+      "has_random_allocation",
+      "parallel_intervention_arms",
+      "is_cluster_random",
+      "is_secondary_or_nested_only",
+      "is_protocol_or_single_arm",
+      "reports_or_reanalyzes_an_rct",
+      "parent_study_was_rct",
+      "experimental_allocation_implied",
+      "is_review_or_meta",
+    ],
+    vsAcc: `vs BioBERT ${BIO_ACC}%`,
+    vsF1: `vs BioBERT ${BIO_F1}%`,
+    f1Gloss: "balances catching real RCTs vs false alarms",
+    footer:
+      '<span class="mono">r3_ship</span> · optional MEDLINE PT mode · Acc <span class="mono">93.5%</span> / F1 <span class="mono">93.12%</span> · <a href="https://doi.org/10.1371/journal.pone.0283342">Bat4RCT</a> · <a href="https://docs.typesafe.ai/introduction">TypeSafe</a>',
+  },
+};
 
 const $ = (id) => document.getElementById(id);
 
+let currentMode = "synergy";
 let pubs = [];
 let selectedIdx = null;
 let running = false;
@@ -33,6 +72,10 @@ let stopFlag = false;
 let mode = "idle";
 let questionsMeta = null;
 let runStartedAt = 0;
+
+function cfg() {
+  return MODES[currentMode] || MODES.synergy;
+}
 
 function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
@@ -56,7 +99,7 @@ function renderGrid() {
     const el = document.createElement("button");
     el.type = "button";
     el.className = `block ${blockClass(pub)}${selectedIdx === pub.demo_idx ? " selected" : ""}`;
-    el.title = `PMID ${pub.pmid} · ${pub.gold}`;
+    el.title = `${pub.pmid} · ${pub.gold}`;
     el.dataset.idx = String(pub.demo_idx);
     el.addEventListener("click", () => selectPub(pub.demo_idx));
     frag.appendChild(el);
@@ -67,7 +110,8 @@ function renderGrid() {
 function updateBlock(demoIdx) {
   const el = $("grid").querySelector(`[data-idx="${demoIdx}"]`);
   if (!el) return;
-  const pub = pubs[demoIdx];
+  const pub = pubs.find((p) => p.demo_idx === demoIdx);
+  if (!pub) return;
   el.className = `block ${blockClass(pub)}${selectedIdx === demoIdx ? " selected" : ""}`;
 }
 
@@ -76,7 +120,7 @@ function selectPub(demoIdx) {
   for (const el of $("grid").querySelectorAll(".block.selected")) el.classList.remove("selected");
   const el = $("grid").querySelector(`[data-idx="${demoIdx}"]`);
   if (el) el.classList.add("selected");
-  showDetail(pubs[demoIdx]);
+  showDetail(pubs.find((p) => p.demo_idx === demoIdx));
 }
 
 function fmtProb(v) {
@@ -104,6 +148,13 @@ function answerValue(r, key) {
 }
 
 function usedInCombine(id) {
+  if (currentMode === "synergy") {
+    if (id === "label") return "choice==include";
+    if (["mentions_emicizumab", "is_human_data", "reports_pk_or_pkpd"].includes(id))
+      return "require ≥0.5";
+    if (id === "is_secondary_without_pk") return "require <0.5";
+    return "";
+  }
   if (["has_random_allocation", "parallel_intervention_arms", "is_cluster_random"].includes(id))
     return "positive ≥0.5";
   if (["is_secondary_or_nested_only", "is_protocol_or_single_arm"].includes(id))
@@ -115,6 +166,20 @@ function usedInCombine(id) {
   return "";
 }
 
+function posProb(r) {
+  const c = cfg();
+  if (currentMode === "synergy")
+    return r.p_include ?? r.probabilities?.include ?? r.probabilities?.[c.positive];
+  return r.p_RCT ?? r.probabilities?.RCT;
+}
+
+function negProb(r) {
+  const c = cfg();
+  if (currentMode === "synergy")
+    return r.p_exclude ?? r.probabilities?.exclude ?? r.probabilities?.[c.negative];
+  return r.p_non_RCT ?? r.probabilities?.non_RCT;
+}
+
 function showDetail(pub) {
   if (!pub) {
     $("detail-empty").hidden = false;
@@ -123,11 +188,13 @@ function showDetail(pub) {
   }
   $("detail-empty").hidden = true;
   $("detail-body").hidden = false;
-  $("d-pmid").textContent = `PMID ${pub.pmid}`;
+  $("d-pmid").textContent = pub.pmid || pub.record_id || "";
   $("d-idx").textContent = `#${pub.demo_idx}`;
   $("d-title").textContent = pub.title || "(no title)";
   $("d-abstract").textContent = pub.abstract || "";
-  $("d-combine").textContent = COMBINE_TEXT;
+  $("d-combine").textContent = cfg().combine;
+  $("k-p-pos").textContent = `P(${cfg().positive})`;
+  $("k-p-neg").textContent = `P(${cfg().negative})`;
 
   const r = pub.result;
   const ansBox = $("d-answers");
@@ -152,8 +219,8 @@ function showDetail(pub) {
   $("d-choice").textContent = r.choice || r.answers?.label?.choice || "—";
   const conf = Number(r.confidence);
   $("d-conf").textContent = Number.isFinite(conf) ? conf.toFixed(3) : "—";
-  $("d-p-rct").textContent = fmtProb(r.p_RCT ?? r.probabilities?.RCT);
-  $("d-p-non").textContent = fmtProb(r.p_non_RCT ?? r.probabilities?.non_RCT);
+  $("d-p-rct").textContent = fmtProb(posProb(r));
+  $("d-p-non").textContent = fmtProb(negProb(r));
   $("d-lat").textContent = r.latency_ms != null ? `${Math.round(Number(r.latency_ms))} ms` : "—";
 
   const liveTok = r.input_tokens != null && r.input_tokens !== "";
@@ -176,8 +243,8 @@ function showDetail(pub) {
     $("d-match").className = agree ? "v hit" : "v miss";
   }
 
-  const rows = [{ id: "label", type: "choice", used: "choice==RCT" }].concat(
-    NOUL_ORDER.map((id) => ({ id, type: "noul", used: usedInCombine(id) }))
+  const rows = [{ id: "label", type: "choice", used: usedInCombine("label") }].concat(
+    cfg().noulOrder.map((id) => ({ id, type: "noul", used: usedInCombine(id) }))
   );
   for (const row of rows) {
     const el = document.createElement("div");
@@ -200,6 +267,7 @@ function showDetail(pub) {
 function updateScoreboard() {
   const done = pubs.filter((p) => p.state === "done" && p.result);
   const n = done.length;
+  const pos = cfg().positive;
   $("progress").textContent = `n=${n} / ${pubs.length}`;
 
   const wallMs = runStartedAt ? performance.now() - runStartedAt : 0;
@@ -231,9 +299,9 @@ function updateScoreboard() {
     const pred = p.result.pred;
     const gold = p.gold;
     if (pred === gold) correct++;
-    if (gold === "RCT" && pred === "RCT") tp++;
-    if (gold !== "RCT" && pred === "RCT") fp++;
-    if (gold === "RCT" && pred !== "RCT") fn++;
+    if (gold === pos && pred === pos) tp++;
+    if (gold !== pos && pred === pos) fp++;
+    if (gold === pos && pred !== pos) fn++;
     lat += Number(p.result.latency_ms) || 0;
     const t = p.result.input_tokens ?? p.result.input_tokens_est;
     if (t != null && t !== "" && Number.isFinite(Number(t))) {
@@ -273,6 +341,7 @@ function setBusy(busy) {
   $("btn-replay").disabled = busy;
   $("btn-stop").disabled = !busy;
   $("sel-workers").disabled = busy;
+  $("sel-mode").disabled = busy;
 }
 
 function resetStates() {
@@ -287,14 +356,33 @@ function resetStates() {
   updateScoreboard();
 }
 
+function applyModeChrome() {
+  const c = cfg();
+  $("hdr-title").textContent = c.title;
+  $("hdr-sub").textContent = c.sub;
+  $("vs-acc").textContent = c.vsAcc;
+  $("vs-f1").textContent = c.vsF1;
+  $("f1-gloss").textContent = c.f1Gloss;
+  $("footer").innerHTML = c.footer;
+  document.title = `Jev × ${c.title}`;
+}
+
 async function loadQuestions() {
   try {
-    const res = await fetch("/api/questions");
+    const res = await fetch(`/api/questions?mode=${currentMode}`);
     if (!res.ok) return;
     questionsMeta = await res.json();
-    $("q-combine").textContent = questionsMeta.combine || COMBINE_TEXT;
+    $("q-combine").textContent = questionsMeta.combine || cfg().combine;
     const list = $("q-list");
     list.innerHTML = "";
+    if (questionsMeta.review?.eligibility_criteria) {
+      const card = document.createElement("div");
+      card.className = "q-card";
+      card.innerHTML = `
+        <div><span class="qid">eligibility</span><span class="qtype">SYNERGY</span></div>
+        <p class="instr">${questionsMeta.review.eligibility_criteria}</p>`;
+      list.appendChild(card);
+    }
     for (const q of questionsMeta.questions || []) {
       const card = document.createElement("div");
       card.className = "q-card";
@@ -308,7 +396,7 @@ async function loadQuestions() {
       list.appendChild(card);
     }
   } catch (_) {
-    $("q-combine").textContent = COMBINE_TEXT;
+    $("q-combine").textContent = cfg().combine;
   }
 }
 
@@ -318,21 +406,29 @@ function openDrawer(open) {
 }
 
 async function loadDemo() {
-  const res = await fetch("/api/demo");
-  if (!res.ok) throw new Error("Missing data/demo_200.csv");
+  applyModeChrome();
+  const res = await fetch(`/api/demo?mode=${currentMode}`);
+  if (!res.ok) throw new Error(`Missing demo data for mode=${currentMode}`);
   const data = await res.json();
   pubs = (data.rows || []).map((r) => ({
     demo_idx: Number(r.demo_idx),
-    pmid: String(r.pmid || ""),
+    pmid: String(r.pmid || r.record_id || ""),
+    record_id: String(r.record_id || r.pmid || ""),
     title: r.title || "",
     abstract: r.abstract || "",
     gold: r.gold || "",
     state: "pending",
   }));
   pubs.sort((a, b) => a.demo_idx - b.demo_idx);
+  selectedIdx = null;
   renderGrid();
+  showDetail(null);
   updateScoreboard();
-  $("status").textContent = `${pubs.length} pubs · r3_ship`;
+  const label =
+    currentMode === "synergy"
+      ? `${pubs.length} records · Donners_2021 · human gold`
+      : `${pubs.length} pubs · r3_ship · MEDLINE PT`;
+  $("status").textContent = label;
   await loadQuestions();
 }
 
@@ -340,7 +436,13 @@ async function classifyOne(pub) {
   const res = await fetch("/api/classify", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ pmid: pub.pmid, title: pub.title, abstract: pub.abstract }),
+    body: JSON.stringify({
+      mode: currentMode,
+      pmid: pub.pmid,
+      record_id: pub.record_id,
+      title: pub.title,
+      abstract: pub.abstract,
+    }),
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
@@ -369,7 +471,7 @@ async function runLive() {
   resetStates();
   runStartedAt = performance.now();
   const workers = Math.max(1, Math.min(32, Number($("sel-workers").value) || DEFAULT_WORKERS));
-  $("status").textContent = `Live r3_ship · ${workers} workers`;
+  $("status").textContent = `Live ${cfg().rule} · ${workers} workers`;
   $("wall-note").textContent = "live";
 
   await runPool(async (pub) => {
@@ -404,10 +506,30 @@ function rowToResult(row) {
   const input_tokens = num(row.input_tokens);
   const input_tokens_est = num(row.input_tokens_est);
   const toks = input_tokens ?? input_tokens_est;
-  return {
+  const base = {
     pred: row.pred,
     choice: row.choice || null,
     confidence: Number(row.confidence),
+    latency_ms: Number(row.latency_ms),
+    input_tokens,
+    input_tokens_est,
+    cost_usd: tokenCost(toks),
+    rule: row.rule || cfg().rule,
+  };
+  if (currentMode === "synergy") {
+    return {
+      ...base,
+      p_include: Number(row.p_include),
+      p_exclude: Number(row.p_exclude),
+      probabilities: { include: Number(row.p_include), exclude: Number(row.p_exclude) },
+      mentions_emicizumab: num(row.mentions_emicizumab),
+      is_human_data: num(row.is_human_data),
+      reports_pk_or_pkpd: num(row.reports_pk_or_pkpd),
+      is_secondary_without_pk: num(row.is_secondary_without_pk),
+    };
+  }
+  return {
+    ...base,
     p_RCT: Number(row.p_RCT),
     p_non_RCT: Number(row.p_non_RCT),
     probabilities: { RCT: Number(row.p_RCT), non_RCT: Number(row.p_non_RCT) },
@@ -420,11 +542,6 @@ function rowToResult(row) {
     parent_study_was_rct: num(row.parent_study_was_rct),
     experimental_allocation_implied: num(row.experimental_allocation_implied),
     is_review_or_meta: num(row.is_review_or_meta),
-    latency_ms: Number(row.latency_ms),
-    input_tokens,
-    input_tokens_est,
-    cost_usd: tokenCost(toks),
-    rule: row.rule || RULE_ID,
   };
 }
 
@@ -435,28 +552,35 @@ async function runReplay() {
   setBusy(true);
   resetStates();
   runStartedAt = performance.now();
-  $("status").textContent = "Loading cached r3_ship…";
+  $("status").textContent = `Loading cached ${cfg().rule}…`;
   $("wall-note").textContent = "replay";
 
-  const res = await fetch("/api/predictions");
+  const res = await fetch(`/api/predictions?mode=${currentMode}`);
   if (!res.ok) {
     setBusy(false);
-    $("status").textContent = "No results/predictions.csv — run eval or use Start";
+    $("status").textContent =
+      currentMode === "synergy"
+        ? "No results/predictions.csv — run: python -m src.run_synergy_eval"
+        : "No results/bat4rct/predictions.csv — use Start or restore cache";
     return;
   }
   const data = await res.json();
-  const byPmid = new Map();
-  for (const row of data.rows || []) byPmid.set(String(row.pmid), row);
+  const byId = new Map();
+  for (const row of data.rows || []) {
+    const id = String(row.pmid || row.record_id || "");
+    byId.set(id, row);
+    if (row.demo_idx != null) byId.set(`idx:${row.demo_idx}`, row);
+  }
 
   const workers = Math.max(1, Math.min(32, Number($("sel-workers").value) || DEFAULT_WORKERS));
-  $("status").textContent = `Replay r3_ship · ${workers} workers`;
+  $("status").textContent = `Replay ${cfg().rule} · ${workers} workers`;
 
   await runPool(async (pub, i) => {
     pub.state = "running";
     updateBlock(pub.demo_idx);
     await sleep(35 + (i % workers) * 10);
     if (stopFlag) return;
-    const row = byPmid.get(pub.pmid);
+    const row = byId.get(pub.pmid) || byId.get(`idx:${pub.demo_idx}`);
     if (!row) {
       pub.state = "error";
       pub.error = "missing in cache";
@@ -474,7 +598,7 @@ async function runReplay() {
   updateScoreboard();
   $("status").textContent = stopFlag
     ? "Stopped"
-    : `Replay done · r3_ship Acc 93.5% / F1 93.12% · vs BioBERT ${BIO_ACC}% / ${BIO_F1}%`;
+    : `Replay done · ${currentMode} · n=${pubs.filter((p) => p.state === "done").length}`;
 }
 
 $("btn-start").addEventListener("click", () =>
@@ -496,6 +620,13 @@ $("btn-stop").addEventListener("click", () => {
 $("btn-questions").addEventListener("click", () => openDrawer(true));
 $("btn-close-q").addEventListener("click", () => openDrawer(false));
 $("drawer-backdrop").addEventListener("click", () => openDrawer(false));
+$("sel-mode").addEventListener("change", () => {
+  if (running) return;
+  currentMode = $("sel-mode").value === "bat4rct" ? "bat4rct" : "synergy";
+  loadDemo().catch((e) => {
+    $("status").textContent = String(e.message || e);
+  });
+});
 
 loadDemo().catch((e) => {
   $("status").textContent = String(e.message || e);

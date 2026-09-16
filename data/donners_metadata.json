@@ -1,0 +1,12 @@
+{
+  "review": "Donners_2021",
+  "topic": "Medicine",
+  "n_records": 258,
+  "n_included": 15,
+  "inclusion_rate": 0.058,
+  "publication_doi": "10.1007/s40262-021-01042-w",
+  "publication_title": "Pharmacokinetics and Associated Efficacy of Emicizumab in Humans: A Systematic Review",
+  "eligibility_criteria": "The following inclusion criteria were applied: emicizumab studies providing (1) data on humans, (2) original PK data or modeled PK data or PK/PD relationships, and (3) access to the abstract and the full text in English.",
+  "source": "ASReview SYNERGY (CC0) https://github.com/asreview/synergy-dataset",
+  "why": "Smallest medicine review with usable eligibility text (N=258, 15 included / 5.8%); fits ~200-grid UI without subsampling."
+}

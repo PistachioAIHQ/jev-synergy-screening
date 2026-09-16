@@ -1,0 +1,39 @@
+{
+  "n": 200,
+  "accuracy": 0.935,
+  "precision_RCT": 0.9887640449438202,
+  "recall_RCT": 0.88,
+  "f1_RCT": 0.9312169312169312,
+  "mean_latency_ms": 528.9900323713664,
+  "biobert_accuracy": 0.9637,
+  "biobert_f1": 0.9085,
+  "delta_acc_vs_biobert": -0.028699999999999948,
+  "delta_f1_vs_biobert": 0.02271693121693119,
+  "tp": 88,
+  "fp": 1,
+  "fn": 12,
+  "tn": 99,
+  "rule": "r3_ship_cd_choice_plus_reports_exp095",
+  "aggressive": false,
+  "psych_or_0_5": false,
+  "exp_threshold": 0.95,
+  "input_usd_per_mtok": 0.042,
+  "output_usd_per_mtok": 0.0,
+  "estimated_input_tokens_total": 524921,
+  "estimated_cost_usd_total": 0.022046682,
+  "estimated_cost_usd_per_paper": 0.00011023341,
+  "cost_note": "Replay film cache has no live usage.input_tokens; cost uses char/4 + ~2200 tok question-overhead estimate. Live Start uses usage.input_tokens when present.",
+  "note": "Film cache: r3_ship = hybrid OR (reports>=0.5 AND review<0.5) OR (experimental_allocation_implied>=0.95 AND secondary<0.5 AND protocol<0.5 AND review<0.5). Acc 93.5% / F1 93.12%. FP=1. Psych OR@0.5 NOT shipped.",
+  "vs_hybrid_r2": {
+    "accuracy": 0.895,
+    "f1_RCT": 0.8839779005524862,
+    "tp": 80,
+    "fp": 1,
+    "fn": 20,
+    "tn": 99
+  },
+  "choice_only_baseline": {
+    "accuracy": 0.87,
+    "f1_RCT": 0.8522727272727272
+  }
+}

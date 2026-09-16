@@ -2,10 +2,17 @@ from __future__ import annotations
 
 from typing import Iterable
 
-from .config import BIOBERT_ACC, BIOBERT_F1, LABEL_RCT
+from .config import BIOBERT_ACC, BIOBERT_F1, LABEL_INCLUDE, LABEL_RCT
 
 
-def compute_metrics(golds: Iterable[str], preds: Iterable[str], latencies_ms: Iterable[float]) -> dict:
+def compute_metrics(
+    golds: Iterable[str],
+    preds: Iterable[str],
+    latencies_ms: Iterable[float],
+    *,
+    positive_label: str = LABEL_RCT,
+    include_biobert: bool = True,
+) -> dict:
     golds = list(golds)
     preds = list(preds)
     lats = list(latencies_ms)
@@ -15,27 +22,40 @@ def compute_metrics(golds: Iterable[str], preds: Iterable[str], latencies_ms: It
     correct = sum(g == p for g, p in zip(golds, preds))
     acc = correct / n
 
-    tp = sum(g == LABEL_RCT and p == LABEL_RCT for g, p in zip(golds, preds))
-    fp = sum(g != LABEL_RCT and p == LABEL_RCT for g, p in zip(golds, preds))
-    fn = sum(g == LABEL_RCT and p != LABEL_RCT for g, p in zip(golds, preds))
+    pos = positive_label
+    tp = sum(g == pos and p == pos for g, p in zip(golds, preds))
+    fp = sum(g != pos and p == pos for g, p in zip(golds, preds))
+    fn = sum(g == pos and p != pos for g, p in zip(golds, preds))
+    tn = sum(g != pos and p != pos for g, p in zip(golds, preds))
     prec = tp / (tp + fp) if (tp + fp) else 0.0
     rec = tp / (tp + fn) if (tp + fn) else 0.0
     f1 = 2 * prec * rec / (prec + rec) if (prec + rec) else 0.0
     mean_lat = sum(lats) / len(lats) if lats else 0.0
 
-    return {
+    out = {
         "n": n,
         "accuracy": acc,
-        "precision_RCT": prec,
-        "recall_RCT": rec,
-        "f1_RCT": f1,
+        "positive_label": pos,
+        "precision": prec,
+        "recall": rec,
+        "f1": f1,
         "mean_latency_ms": mean_lat,
-        "biobert_accuracy": BIOBERT_ACC,
-        "biobert_f1": BIOBERT_F1,
-        "delta_acc_vs_biobert": acc - BIOBERT_ACC,
-        "delta_f1_vs_biobert": f1 - BIOBERT_F1,
         "tp": tp,
         "fp": fp,
         "fn": fn,
-        "tn": sum(g != LABEL_RCT and p != LABEL_RCT for g, p in zip(golds, preds)),
+        "tn": tn,
     }
+    # Back-compat keys used by Bat4RCT UI / README
+    out["precision_RCT"] = prec if pos == LABEL_RCT else None
+    out["recall_RCT"] = rec if pos == LABEL_RCT else None
+    out["f1_RCT"] = f1 if pos == LABEL_RCT else None
+    if pos == LABEL_INCLUDE:
+        out["precision_include"] = prec
+        out["recall_include"] = rec
+        out["f1_include"] = f1
+    if include_biobert and pos == LABEL_RCT:
+        out["biobert_accuracy"] = BIOBERT_ACC
+        out["biobert_f1"] = BIOBERT_F1
+        out["delta_acc_vs_biobert"] = acc - BIOBERT_ACC
+        out["delta_f1_vs_biobert"] = f1 - BIOBERT_F1
+    return out

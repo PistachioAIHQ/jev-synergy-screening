@@ -170,3 +170,9 @@ footer {
   .layout { grid-template-columns: 1fr; }
   .grid { grid-template-columns: repeat(16, 1fr); }
 }
+
+.field select { min-width: 11rem; }
+
+
+.field select { min-width: 11rem; }
+
