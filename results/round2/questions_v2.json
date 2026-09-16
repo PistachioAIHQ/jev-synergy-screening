@@ -1,0 +1,50 @@
+{
+  "label": {
+    "type": "choice",
+    "instructions": "Classify this MEDLINE title and abstract as RCT or non_RCT. Treat British 'randomised' the same as 'randomized'. Include cluster-randomized trials (sites/groups randomly assigned). Parallel-arm trials that randomly allocate humans to intervention vs control/comparison count as RCT even if the word random is missing, IF allocation to arms is clearly experimental. Do NOT require the paper to be the primary results paper if the abstract itself is a completed randomized trial.",
+    "criteria": {
+      "RCT": "Human participants (or clusters of humans) were randomly / randomly allocated / randomly assigned / randomised to intervention vs control/comparison arms, OR a clear parallel-arm experimental trial with allocation to arms (even if the word random is omitted).",
+      "non_RCT": "Not an RCT report: observational/cohort/cross-sectional/retrospective without random allocation; case report/series; review/meta-analysis; guideline; commentary/letter; animal-only; protocol-only; secondary analysis/screening baseline/qualitative nested study that only mentions a parent RCT; or insufficient evidence of allocation to arms."
+    }
+  },
+  "has_random_allocation": {
+    "type": "noul",
+    "instructions": "The abstract states that humans (or human clusters/sites) were randomly allocated, randomly assigned, randomised, or underwent random allocation to study arms",
+    "criteria": {
+      "true": "Explicit random*/randomised allocation or assignment of participants or clusters to arms",
+      "false": "No explicit random allocation language (ignore 'randomly selected' for sampling only)"
+    }
+  },
+  "parallel_intervention_arms": {
+    "type": "noul",
+    "instructions": "The abstract reports a prospective human study comparing two or more intervention/control arms in parallel (participants divided into groups receiving different interventions)",
+    "criteria": {
+      "true": "Clear parallel arms with different interventions or intervention vs control",
+      "false": "Single-arm, dose-escalation without concurrent control, pure observational grouping, or not a multi-arm intervention study"
+    }
+  },
+  "is_cluster_random": {
+    "type": "noul",
+    "instructions": "Randomization was at the cluster, site, hospital, school, or group level (cluster-randomized / cluster-randomised trial)",
+    "criteria": {
+      "true": "Sites/clusters randomly assigned to interventions",
+      "false": "Not cluster randomization"
+    }
+  },
+  "is_secondary_or_nested_only": {
+    "type": "noul",
+    "instructions": "This abstract is ONLY a secondary analysis, screening/baseline cross-section, qualitative process evaluation, methods/ancillary paper, or reanalysis of data from a parent trial — not reporting the primary randomized allocation results of this study",
+    "criteria": {
+      "true": "Secondary/nested/screening/reanalysis/ancillary only",
+      "false": "Reports (or is) the randomized trial itself"
+    }
+  },
+  "is_protocol_or_single_arm": {
+    "type": "noul",
+    "instructions": "This is a study protocol without results, OR a single-arm / dose-escalation / historical-control clinical study without concurrent randomized comparison",
+    "criteria": {
+      "true": "Protocol-only or non-randomized single-arm/dose-escalation/historical-control",
+      "false": "Not protocol-only and not single-arm-without-random-comparison"
+    }
+  }
+}

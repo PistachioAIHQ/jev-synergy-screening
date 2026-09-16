@@ -1,16 +1,16 @@
-"""Run Jev over the 200-row demo set; write predictions + metrics."""
+"""Run Jev hybrid over the 200-row demo set; write predictions + metrics."""
 from __future__ import annotations
 
 import argparse
 import json
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from pathlib import Path
 
 import pandas as pd
 
 from .bat4rct import load_demo
 from .config import METRICS_JSON, PREDICTIONS_CSV, RESULTS_DIR
+from .hybrid import NOUL_KEYS
 from .jev_client import classify, load_api_key
 from .metrics import compute_metrics
 
@@ -23,47 +23,53 @@ def _one(row: dict, api_key: str, dry_run: bool) -> dict:
         "title": row["title"],
         "abstract": row["abstract"],
     }
+    empty_nouls = {k: float("nan") for k in NOUL_KEYS}
     if dry_run:
-        # heuristic stub for UI wiring without API
         text = (row.get("text") or "").lower()
         is_rct = any(k in text for k in ("randomized", "randomised", "randomly assigned", "rct"))
         pred = "RCT" if is_rct else "non_RCT"
         return {
             **base,
+            "choice": pred,
             "pred": pred,
             "confidence": 0.5,
             "p_RCT": 0.7 if is_rct else 0.3,
             "p_non_RCT": 0.3 if is_rct else 0.7,
-            "noul_is_rct": 0.7 if is_rct else 0.3,
+            **{k: (0.7 if is_rct else 0.3) for k in NOUL_KEYS},
             "latency_ms": 1.0,
             "correct": pred == row["gold"],
             "error": "",
+            "rule": "hybrid_cd_choice_plus_r2_nouls",
         }
     try:
         out = classify(row["text"], api_key=api_key)
         pred = out["pred"]
         return {
             **base,
+            "choice": out.get("choice"),
             "pred": pred,
             "confidence": out["confidence"],
             "p_RCT": out["p_RCT"],
             "p_non_RCT": out["p_non_RCT"],
-            "noul_is_rct": out["noul_is_rct"],
+            **{k: out.get(k) for k in NOUL_KEYS},
             "latency_ms": out["latency_ms"],
             "correct": pred == row["gold"],
             "error": "",
+            "rule": out.get("rule") or "hybrid_cd_choice_plus_r2_nouls",
         }
-    except Exception as e:  # noqa: BLE001 — keep going on single failures
+    except Exception as e:  # noqa: BLE001
         return {
             **base,
+            "choice": "",
             "pred": "",
             "confidence": 0.0,
             "p_RCT": 0.0,
             "p_non_RCT": 0.0,
-            "noul_is_rct": float("nan"),
+            **empty_nouls,
             "latency_ms": 0.0,
             "correct": False,
             "error": str(e)[:300],
+            "rule": "hybrid_cd_choice_plus_r2_nouls",
         }
 
 
@@ -93,13 +99,15 @@ def run(limit: int | None = None, workers: int = 4, dry_run: bool = False) -> di
     metrics["wall_seconds"] = time.perf_counter() - t0
     metrics["n_errors"] = int((df["error"].astype(str).str.len() > 0).sum())
     metrics["dry_run"] = dry_run
+    metrics["rule"] = "hybrid_cd_choice_plus_r2_nouls"
+    metrics["aggressive"] = False
     METRICS_JSON.write_text(json.dumps(metrics, indent=2), encoding="utf-8")
     print(json.dumps(metrics, indent=2))
     return metrics
 
 
 def main() -> None:
-    p = argparse.ArgumentParser(description="Run Jev on Bat4RCT demo_200")
+    p = argparse.ArgumentParser(description="Run hybrid Jev on Bat4RCT demo_200")
     p.add_argument("--limit", type=int, default=None)
     p.add_argument("--workers", type=int, default=6)
     p.add_argument("--dry-run", action="store_true")

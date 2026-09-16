@@ -1,18 +1,23 @@
 {
   "n": 200,
-  "accuracy": 0.87,
-  "precision_RCT": 0.9868421052631579,
-  "recall_RCT": 0.75,
-  "f1_RCT": 0.8522727272727272,
-  "mean_latency_ms": 535.2491555025335,
+  "accuracy": 0.895,
+  "precision_RCT": 0.9876543209876543,
+  "recall_RCT": 0.8,
+  "f1_RCT": 0.8839779005524862,
+  "mean_latency_ms": 528.9900323713664,
   "biobert_accuracy": 0.9637,
   "biobert_f1": 0.9085,
-  "delta_acc_vs_biobert": -0.0937,
-  "delta_f1_vs_biobert": -0.05622727272727279,
-  "tp": 75,
+  "delta_acc_vs_biobert": -0.06869999999999998,
+  "delta_f1_vs_biobert": -0.024522099447513823,
+  "tp": 80,
   "fp": 1,
-  "fn": 25,
+  "fn": 20,
   "tn": 99,
-  "ablation_note": "baseline remains default; no full-coverage variant beat Acc 87.0% / F1 85.2%",
-  "best_variant": "baseline"
+  "rule": "hybrid_cd_choice_plus_r2_nouls",
+  "aggressive": false,
+  "note": "Film cache: CD medium Choice (raw_CD) + R2 atomic nouls; Acc 89.5% / F1 88.40% vs choice-only 87%/85.23%. Aggressive NOT used.",
+  "choice_only_baseline": {
+    "accuracy": 0.87,
+    "f1_RCT": 0.8522727272727272
+  }
 }

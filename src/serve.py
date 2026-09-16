@@ -1,4 +1,4 @@
-"""Tiny static+API server for the screenable web UI (v2: grid + live classify)."""
+"""Tiny static+API server for the screenable web UI (v2: grid + live hybrid classify)."""
 from __future__ import annotations
 
 import argparse
@@ -10,10 +10,11 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from .config import DEMO_CSV, METRICS_JSON, PREDICTIONS_CSV, ROOT, WEB_DIR
+from .hybrid import NOUL_KEYS
 from .jev_client import classify, load_api_key
 
 
-def _finite(x: float) -> float | None:
+def _finite(x) -> float | None:
     try:
         v = float(x)
     except (TypeError, ValueError):
@@ -41,7 +42,7 @@ class Handler(SimpleHTTPRequestHandler):
         if path == "/api/metrics":
             return self._json_file(METRICS_JSON)
         if path == "/api/health":
-            return self._json({"ok": True, "ui": "v2"})
+            return self._json({"ok": True, "ui": "v2", "rule": "hybrid_cd_choice_plus_r2_nouls"})
         return super().do_GET()
 
     def do_POST(self):  # noqa: N802
@@ -94,22 +95,26 @@ class Handler(SimpleHTTPRequestHandler):
         except Exception as e:  # noqa: BLE001
             return self._json({"error": str(e), "pmid": pmid}, status=502)
 
-        noul = _finite(out.get("noul_is_rct"))
+        nouls = {k: _finite(out.get(k)) for k in NOUL_KEYS}
         return self._json(
             {
                 "pmid": pmid,
                 "pred": out.get("pred"),
+                "choice": out.get("choice"),
                 "confidence": out.get("confidence"),
-                "probabilities": {
+                "probabilities": out.get("probabilities")
+                or {
                     "RCT": out.get("p_RCT"),
                     "non_RCT": out.get("p_non_RCT"),
                 },
                 "p_RCT": out.get("p_RCT"),
                 "p_non_RCT": out.get("p_non_RCT"),
-                "noul": noul,
-                "noul_is_rct": noul,
+                **nouls,
+                "answers": out.get("answers"),
                 "latency_ms": out.get("latency_ms"),
                 "model": out.get("model"),
+                "rule": out.get("rule") or "hybrid_cd_choice_plus_r2_nouls",
+                "aggressive": False,
             }
         )
 
@@ -149,7 +154,7 @@ def main() -> None:
     if not PREDICTIONS_CSV.exists():
         print(f"WARN: {PREDICTIONS_CSV} missing — Replay cached needs: python -m src.run_eval")
     httpd = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
-    print(f"Demo UI v2 → http://127.0.0.1:{args.port}/  (cwd web={WEB_DIR})")
+    print(f"Demo UI v2 (hybrid) → http://127.0.0.1:{args.port}/  (cwd web={WEB_DIR})")
     print(f"Repo root {ROOT}")
     print("GET /api/demo · POST /api/classify · GET /api/predictions (replay)")
     httpd.serve_forever()

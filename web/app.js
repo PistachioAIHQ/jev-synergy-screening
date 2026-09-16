@@ -1,8 +1,15 @@
-/** UI v2 — 200-block grid, live parallel Jev classify, optional cached replay. */
+/** UI v2 — 200-block grid, live parallel hybrid Jev classify, optional cached replay. */
 const BIO_ACC = 96.37;
 const BIO_F1 = 90.85;
 const AMBER_CONF = 0.55; // confidence < this → amber (agree or disagree)
 const DEFAULT_WORKERS = 8;
+const NOUL_FIELDS = [
+  ["has_random_allocation", "d-noul-rand"],
+  ["parallel_intervention_arms", "d-noul-par"],
+  ["is_cluster_random", "d-noul-clu"],
+  ["is_secondary_or_nested_only", "d-noul-sec"],
+  ["is_protocol_or_single_arm", "d-noul-prot"],
+];
 
 const $ = (id) => document.getElementById(id);
 
@@ -58,6 +65,18 @@ function selectPub(demoIdx) {
   showDetail(pubs[demoIdx]);
 }
 
+function clearNouls() {
+  for (const [, id] of NOUL_FIELDS) $(id).textContent = "—";
+}
+
+function setNouls(r) {
+  for (const [key, id] of NOUL_FIELDS) {
+    let v = r[key];
+    if ((v == null || v === "") && r.answers && r.answers[key]) v = r.answers[key].noul;
+    $(id).textContent = fmtProb(v);
+  }
+}
+
 function showDetail(pub) {
   if (!pub) {
     $("detail-empty").hidden = false;
@@ -74,10 +93,11 @@ function showDetail(pub) {
   if (!r) {
     $("d-pred").textContent = pub.state === "running" ? "…" : pub.error ? "error" : "—";
     $("d-pred").className = "v";
+    $("d-choice").textContent = "—";
     $("d-conf").textContent = "—";
     $("d-p-rct").textContent = "—";
     $("d-p-non").textContent = "—";
-    $("d-noul").textContent = "—";
+    clearNouls();
     $("d-lat").textContent = "—";
     $("d-gold").textContent = pub.gold || "—";
     $("d-match").textContent = pub.error || pub.state || "pending";
@@ -86,14 +106,12 @@ function showDetail(pub) {
   }
   $("d-pred").textContent = r.pred || "—";
   $("d-pred").className = `v pred-${r.pred || ""}`;
+  $("d-choice").textContent = r.choice || r.answers?.label?.choice || "—";
   const conf = Number(r.confidence);
   $("d-conf").textContent = Number.isFinite(conf) ? conf.toFixed(3) : "—";
   $("d-p-rct").textContent = fmtProb(r.p_RCT ?? r.probabilities?.RCT);
   $("d-p-non").textContent = fmtProb(r.p_non_RCT ?? r.probabilities?.non_RCT);
-  const noul = r.noul ?? r.noul_is_rct;
-  $("d-noul").textContent = noul == null || noul === "" || Number.isNaN(Number(noul))
-    ? "—"
-    : Number(noul).toFixed(3);
+  setNouls(r);
   $("d-lat").textContent = r.latency_ms != null ? `${Math.round(Number(r.latency_ms))} ms` : "—";
   $("d-gold").textContent = pub.gold || "—";
   const agree = r.pred === pub.gold;
@@ -180,7 +198,7 @@ async function loadDemo() {
   pubs.sort((a, b) => a.demo_idx - b.demo_idx);
   renderGrid();
   updateScoreboard();
-  $("status").textContent = `${pubs.length} pubs ready`;
+  $("status").textContent = `${pubs.length} pubs ready · hybrid default`;
   $("btn-start").textContent = "Start";
 }
 
@@ -206,7 +224,7 @@ async function runLive() {
   setBusy(true);
   resetStates();
   const workers = Math.max(1, Math.min(32, Number($("sel-workers").value) || DEFAULT_WORKERS));
-  $("status").textContent = `Live · ${workers} workers`;
+  $("status").textContent = `Live hybrid · ${workers} workers`;
 
   let next = 0;
   const total = pubs.length;
@@ -240,13 +258,32 @@ async function runLive() {
   $("status").textContent = stopFlag ? "Stopped" : `Done · ${pubs.filter((p) => p.state === "done").length}/${total}`;
 }
 
+function rowToResult(row) {
+  const num = (v) => (v === "" || v == null ? null : Number(v));
+  return {
+    pred: row.pred,
+    choice: row.choice || null,
+    confidence: Number(row.confidence),
+    p_RCT: Number(row.p_RCT),
+    p_non_RCT: Number(row.p_non_RCT),
+    probabilities: { RCT: Number(row.p_RCT), non_RCT: Number(row.p_non_RCT) },
+    has_random_allocation: num(row.has_random_allocation),
+    parallel_intervention_arms: num(row.parallel_intervention_arms),
+    is_cluster_random: num(row.is_cluster_random),
+    is_secondary_or_nested_only: num(row.is_secondary_or_nested_only),
+    is_protocol_or_single_arm: num(row.is_protocol_or_single_arm),
+    latency_ms: Number(row.latency_ms),
+    rule: row.rule || "hybrid_cd_choice_plus_r2_nouls",
+  };
+}
+
 async function runReplay() {
   if (running) return;
   mode = "replay";
   stopFlag = false;
   setBusy(true);
   resetStates();
-  $("status").textContent = "Loading cached…";
+  $("status").textContent = "Loading cached hybrid…";
 
   const res = await fetch("/api/predictions");
   if (!res.ok) {
@@ -259,7 +296,7 @@ async function runReplay() {
   for (const row of data.rows || []) byPmid.set(String(row.pmid), row);
 
   const workers = Math.max(1, Math.min(32, Number($("sel-workers").value) || DEFAULT_WORKERS));
-  $("status").textContent = `Replay · ${workers} workers`;
+  $("status").textContent = `Replay hybrid · ${workers} workers`;
 
   let next = 0;
   const total = pubs.length;
@@ -278,15 +315,7 @@ async function runReplay() {
         pub.state = "error";
         pub.error = "missing in cache";
       } else {
-        pub.result = {
-          pred: row.pred,
-          confidence: Number(row.confidence),
-          p_RCT: Number(row.p_RCT),
-          p_non_RCT: Number(row.p_non_RCT),
-          probabilities: { RCT: Number(row.p_RCT), non_RCT: Number(row.p_non_RCT) },
-          noul: row.noul_is_rct === "" || row.noul_is_rct == null ? null : Number(row.noul_is_rct),
-          latency_ms: Number(row.latency_ms),
-        };
+        pub.result = rowToResult(row);
         pub.state = "done";
       }
       updateBlock(pub.demo_idx);
@@ -297,7 +326,9 @@ async function runReplay() {
 
   await Promise.all(Array.from({ length: workers }, () => worker()));
   setBusy(false);
-  $("status").textContent = stopFlag ? "Stopped" : `Replay done · BioBERT Acc ${BIO_ACC}% / F1 ${BIO_F1}%`;
+  $("status").textContent = stopFlag
+    ? "Stopped"
+    : `Replay done · hybrid Acc 89.5% / F1 88.4% · vs BioBERT ${BIO_ACC}% / ${BIO_F1}%`;
 }
 
 $("btn-start").addEventListener("click", () => runLive().catch((e) => {
