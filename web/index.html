@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Jev × Bat4RCT — RCT screening</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Instrument+Sans:wght@400;600;700&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="styles.css"/>
+</head>
+<body>
+  <div class="bg"></div>
+  <header>
+    <div class="brand">
+      <span class="pill">TypeSafe · Jev</span>
+      <h1>Bat4RCT screening</h1>
+      <p>title + abstract → <code>RCT</code> | <code>non_RCT</code> · vs BioBERT baseline</p>
+    </div>
+    <div class="controls">
+      <button id="btn-start" class="primary">Start demo</button>
+      <button id="btn-fast" class="ghost">Faster</button>
+      <label class="toggle"><input type="checkbox" id="chk-all"/> Run all 200</label>
+    </div>
+  </header>
+
+  <section class="criteria" id="criteria">
+    <h2>Screening criteria</h2>
+    <div class="crit-grid">
+      <div class="crit rct">
+        <h3>RCT</h3>
+        <p>Randomized (or randomised) allocation of participants to intervention vs control/comparison arms.</p>
+      </div>
+      <div class="crit non">
+        <h3>non_RCT</h3>
+        <p>Observational, case report/series, review, meta-analysis, guideline, commentary, or unclear.</p>
+      </div>
+    </div>
+    <p class="hint">Jev Choice + Noul · model <code>jev-latest</code> · no free-text rationale</p>
+  </section>
+
+  <main>
+    <div class="lane" id="lane"></div>
+    <article class="card" id="card" hidden>
+      <div class="meta">
+        <span id="pmid"></span>
+        <span id="progress"></span>
+      </div>
+      <h2 id="title"></h2>
+      <p id="abstract"></p>
+      <div class="verdict" id="verdict">
+        <div class="pred">
+          <span class="label" id="pred-label">—</span>
+          <span class="conf" id="pred-conf"></span>
+        </div>
+        <div class="gold" id="gold-line"></div>
+      </div>
+    </article>
+  </main>
+
+  <section class="scoreboard" id="scoreboard">
+    <h2>Scoreboard</h2>
+    <div class="bars">
+      <div class="row">
+        <span class="name">Jev Acc</span>
+        <div class="track"><div class="fill jev" id="bar-jev-acc"></div></div>
+        <span class="val" id="val-jev-acc">—</span>
+      </div>
+      <div class="row">
+        <span class="name">BioBERT Acc</span>
+        <div class="track"><div class="fill base" id="bar-bio-acc" style="width:96.37%"></div></div>
+        <span class="val">96.37%</span>
+      </div>
+      <div class="row">
+        <span class="name">Jev F1</span>
+        <div class="track"><div class="fill jev" id="bar-jev-f1"></div></div>
+        <span class="val" id="val-jev-f1">—</span>
+      </div>
+      <div class="row">
+        <span class="name">BioBERT F1</span>
+        <div class="track"><div class="fill base" id="bar-bio-f1" style="width:90.85%"></div></div>
+        <span class="val">90.85%</span>
+      </div>
+    </div>
+    <p class="latency" id="latency">mean latency —</p>
+  </section>
+
+  <footer>
+    Paper: Kim et al. PLOS ONE 2023 · <a href="https://doi.org/10.1371/journal.pone.0283342">doi:10.1371/journal.pone.0283342</a>
+    · Data: <a href="https://github.com/jennak22/Bat4RCT">Bat4RCT</a>
+    · Docs: <a href="https://docs.typesafe.ai/introduction">TypeSafe</a>
+  </footer>
+  <script src="app.js"></script>
+</body>
+</html>

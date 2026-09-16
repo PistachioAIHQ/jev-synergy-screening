@@ -1,0 +1,17 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+.env.*
+!.env.example
+data/rct_data.zip
+data/rct_data/
+data/raw/
+*.bin
+.DS_Store
+.pytest_cache/
+results/.cache/
+api_key
+**/api_key
+.typesafe/
