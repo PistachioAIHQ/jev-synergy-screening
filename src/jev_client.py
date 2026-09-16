@@ -27,7 +27,7 @@ def load_api_key() -> str:
 
 
 def build_questions() -> dict[str, Any]:
-    """Choice RCT|non_RCT + optional Noul. questions must be a map."""
+    """Baseline Choice RCT|non_RCT + Noul (demo_200: Acc 87.0% / F1 85.2%). questions must be a map."""
     return {
         "label": {
             "type": "choice",
@@ -52,6 +52,44 @@ def build_questions() -> dict[str, Any]:
             "criteria": {
                 "true": "Clear evidence of random allocation to trial arms",
                 "false": "Not clearly an RCT",
+            },
+        },
+    }
+
+
+
+def build_questions_stronger() -> dict[str, Any]:
+    """Ablation alternate (did not beat baseline Acc/F1 on demo_200)."""
+    return {
+        "label": {
+            "type": "choice",
+            "instructions": (
+                "Classify this MEDLINE citation as RCT or non_RCT using a strict MEDLINE-style "
+                "definition of a completed human randomized controlled trial."
+            ),
+            "criteria": {
+                LABEL_RCT: (
+                    "Completed human RCT: humans were randomly assigned to intervention vs "
+                    "control/comparison arms, and the abstract reports trial results (not a protocol)."
+                ),
+                LABEL_NON: (
+                    "Not a completed human RCT: protocols/study designs without results; "
+                    "observational (cohort, case-control, cross-sectional); reviews/meta-analyses/"
+                    "systematic reviews; animal-only or in-vitro; quasi-experimental or "
+                    "non-random allocation; case reports/series; commentaries/letters/guidelines; "
+                    "or insufficient evidence of random assignment of human participants."
+                ),
+            },
+        },
+        "is_rct_statement": {
+            "type": "noul",
+            "instructions": "This abstract reports a completed human randomized controlled trial",
+            "criteria": {
+                "true": (
+                    "Humans randomly assigned to interventions; results of a completed trial "
+                    "(not protocol-only, observational, review, animal-only, or quasi-experimental)."
+                ),
+                "false": "Does not clearly report a completed human RCT",
             },
         },
     }

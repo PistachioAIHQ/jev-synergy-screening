@@ -4,7 +4,7 @@
   "precision_RCT": 0.9868421052631579,
   "recall_RCT": 0.75,
   "f1_RCT": 0.8522727272727272,
-  "mean_latency_ms": 543.5590954707004,
+  "mean_latency_ms": 535.2491555025335,
   "biobert_accuracy": 0.9637,
   "biobert_f1": 0.9085,
   "delta_acc_vs_biobert": -0.0937,
@@ -13,7 +13,6 @@
   "fp": 1,
   "fn": 25,
   "tn": 99,
-  "wall_seconds": 14.001602486008778,
-  "n_errors": 0,
-  "dry_run": false
+  "ablation_note": "baseline remains default; no full-coverage variant beat Acc 87.0% / F1 85.2%",
+  "best_variant": "baseline"
 }

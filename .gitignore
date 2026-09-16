@@ -12,6 +12,8 @@ data/raw/
 .DS_Store
 .pytest_cache/
 results/.cache/
+results/ablation_cache/
+results/ablations_predictions.json
 api_key
 **/api_key
 .typesafe/

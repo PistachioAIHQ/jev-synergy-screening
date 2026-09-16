@@ -1,0 +1,20 @@
+{
+  "baseline": {
+    "accuracy": 0.87,
+    "f1_RCT": 0.8522727272727272,
+    "precision_RCT": 0.9868421052631579,
+    "recall_RCT": 0.75
+  },
+  "best_variant": "baseline",
+  "best": {
+    "accuracy": 0.87,
+    "f1_RCT": 0.8522727272727272,
+    "precision_RCT": 0.9868421052631579,
+    "recall_RCT": 0.75,
+    "mean_latency_ms": 535.2491555025335
+  },
+  "commit_prompt": null,
+  "note": "nothing beats baseline on Acc/F1 without precision collapse",
+  "score_threshold": 1.5,
+  "best_choice_for_title_only": "baseline"
+}
