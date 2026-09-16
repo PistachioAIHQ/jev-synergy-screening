@@ -1,15 +1,28 @@
-/** UI v2 — 200-block grid, live parallel hybrid Jev classify, optional cached replay. */
+/** UI v2 — r3_ship default, Acc/F1 + cost/time, questions drawer. */
 const BIO_ACC = 96.37;
 const BIO_F1 = 90.85;
-const AMBER_CONF = 0.55; // confidence < this → amber (agree or disagree)
+const AMBER_CONF = 0.55;
 const DEFAULT_WORKERS = 8;
-const NOUL_FIELDS = [
-  ["has_random_allocation", "d-noul-rand"],
-  ["parallel_intervention_arms", "d-noul-par"],
-  ["is_cluster_random", "d-noul-clu"],
-  ["is_secondary_or_nested_only", "d-noul-sec"],
-  ["is_protocol_or_single_arm", "d-noul-prot"],
+const INPUT_USD_PER_MTOK = 0.042;
+const RULE_ID = "r3_ship_cd_choice_plus_reports_exp095";
+
+const NOUL_ORDER = [
+  "has_random_allocation",
+  "parallel_intervention_arms",
+  "is_cluster_random",
+  "is_secondary_or_nested_only",
+  "is_protocol_or_single_arm",
+  "reports_or_reanalyzes_an_rct",
+  "parent_study_was_rct",
+  "experimental_allocation_implied",
+  "is_review_or_meta",
 ];
+
+const COMBINE_TEXT =
+  "RCT iff choice==RCT\n" +
+  "  OR ((rand|cluster|parallel)>=0.5 AND secondary<0.5 AND protocol<0.5)\n" +
+  "  OR (reports>=0.5 AND review<0.5)\n" +
+  "  OR (exp>=0.95 AND secondary<0.5 AND protocol<0.5 AND review<0.5)";
 
 const $ = (id) => document.getElementById(id);
 
@@ -18,6 +31,8 @@ let selectedIdx = null;
 let running = false;
 let stopFlag = false;
 let mode = "idle";
+let questionsMeta = null;
+let runStartedAt = 0;
 
 function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
@@ -43,7 +58,6 @@ function renderGrid() {
     el.className = `block ${blockClass(pub)}${selectedIdx === pub.demo_idx ? " selected" : ""}`;
     el.title = `PMID ${pub.pmid} · ${pub.gold}`;
     el.dataset.idx = String(pub.demo_idx);
-    el.setAttribute("aria-label", `Publication ${pub.demo_idx} PMID ${pub.pmid}`);
     el.addEventListener("click", () => selectPub(pub.demo_idx));
     frag.appendChild(el);
   }
@@ -65,16 +79,40 @@ function selectPub(demoIdx) {
   showDetail(pubs[demoIdx]);
 }
 
-function clearNouls() {
-  for (const [, id] of NOUL_FIELDS) $(id).textContent = "—";
+function fmtProb(v) {
+  const n = Number(v);
+  return Number.isFinite(n) ? n.toFixed(3) : "—";
 }
 
-function setNouls(r) {
-  for (const [key, id] of NOUL_FIELDS) {
-    let v = r[key];
-    if ((v == null || v === "") && r.answers && r.answers[key]) v = r.answers[key].noul;
-    $(id).textContent = fmtProb(v);
-  }
+function fmtUsd(v) {
+  if (v == null || !Number.isFinite(Number(v))) return "—";
+  const n = Number(v);
+  if (n < 0.01) return `$${n.toFixed(5)}`;
+  return `$${n.toFixed(4)}`;
+}
+
+function tokenCost(tokens) {
+  if (tokens == null || !Number.isFinite(Number(tokens))) return null;
+  return (Number(tokens) * INPUT_USD_PER_MTOK) / 1_000_000;
+}
+
+function answerValue(r, key) {
+  if (key === "label") return r.choice || r.answers?.label?.choice || "—";
+  let v = r[key];
+  if ((v == null || v === "") && r.answers && r.answers[key]) v = r.answers[key].noul;
+  return v;
+}
+
+function usedInCombine(id) {
+  if (["has_random_allocation", "parallel_intervention_arms", "is_cluster_random"].includes(id))
+    return "positive ≥0.5";
+  if (["is_secondary_or_nested_only", "is_protocol_or_single_arm"].includes(id))
+    return "exclude <0.5";
+  if (id === "reports_or_reanalyzes_an_rct") return "reports path ≥0.5";
+  if (id === "is_review_or_meta") return "review gate <0.5";
+  if (id === "experimental_allocation_implied") return "exp path ≥0.95";
+  if (id === "parent_study_was_rct") return "queried · not in ship rule";
+  return "";
 }
 
 function showDetail(pub) {
@@ -89,31 +127,45 @@ function showDetail(pub) {
   $("d-idx").textContent = `#${pub.demo_idx}`;
   $("d-title").textContent = pub.title || "(no title)";
   $("d-abstract").textContent = pub.abstract || "";
+  $("d-combine").textContent = COMBINE_TEXT;
+
   const r = pub.result;
+  const ansBox = $("d-answers");
+  ansBox.innerHTML = "";
+
   if (!r) {
     $("d-pred").textContent = pub.state === "running" ? "…" : pub.error ? "error" : "—";
-    $("d-pred").className = "v";
     $("d-choice").textContent = "—";
     $("d-conf").textContent = "—";
     $("d-p-rct").textContent = "—";
     $("d-p-non").textContent = "—";
-    clearNouls();
     $("d-lat").textContent = "—";
+    $("d-tok").textContent = "—";
+    $("d-cost").textContent = "—";
     $("d-gold").textContent = pub.gold || "—";
     $("d-match").textContent = pub.error || pub.state || "pending";
     $("d-match").className = "v";
     return;
   }
+
   $("d-pred").textContent = r.pred || "—";
-  $("d-pred").className = `v pred-${r.pred || ""}`;
   $("d-choice").textContent = r.choice || r.answers?.label?.choice || "—";
   const conf = Number(r.confidence);
   $("d-conf").textContent = Number.isFinite(conf) ? conf.toFixed(3) : "—";
   $("d-p-rct").textContent = fmtProb(r.p_RCT ?? r.probabilities?.RCT);
   $("d-p-non").textContent = fmtProb(r.p_non_RCT ?? r.probabilities?.non_RCT);
-  setNouls(r);
   $("d-lat").textContent = r.latency_ms != null ? `${Math.round(Number(r.latency_ms))} ms` : "—";
+
+  const liveTok = r.input_tokens != null && r.input_tokens !== "";
+  const toks = liveTok ? r.input_tokens : r.input_tokens_est;
+  $("d-tok").textContent =
+    toks != null && toks !== ""
+      ? `${Number(toks).toLocaleString()}${liveTok ? "" : " est"}`
+      : "—";
+  const cost = r.cost_usd != null ? Number(r.cost_usd) : tokenCost(toks);
+  $("d-cost").textContent = cost != null ? `${fmtUsd(cost)}${liveTok ? "" : " est"}` : "—";
   $("d-gold").textContent = pub.gold || "—";
+
   const agree = r.pred === pub.gold;
   const low = Number.isFinite(conf) && conf < AMBER_CONF;
   if (low) {
@@ -123,26 +175,58 @@ function showDetail(pub) {
     $("d-match").textContent = agree ? "agree" : "disagree";
     $("d-match").className = agree ? "v hit" : "v miss";
   }
-}
 
-function fmtProb(v) {
-  const n = Number(v);
-  return Number.isFinite(n) ? n.toFixed(3) : "—";
+  const rows = [{ id: "label", type: "choice", used: "choice==RCT" }].concat(
+    NOUL_ORDER.map((id) => ({ id, type: "noul", used: usedInCombine(id) }))
+  );
+  for (const row of rows) {
+    const el = document.createElement("div");
+    el.className = "ans";
+    const val = answerValue(r, row.id);
+    const shown = row.type === "choice" ? String(val) : fmtProb(val);
+    el.innerHTML = `
+      <div>
+        <div class="name">${row.id}</div>
+        <div class="type">${row.type}</div>
+      </div>
+      <div style="text-align:right">
+        <div class="val">${shown}</div>
+        <div class="used">${row.used || ""}</div>
+      </div>`;
+    ansBox.appendChild(el);
+  }
 }
 
 function updateScoreboard() {
   const done = pubs.filter((p) => p.state === "done" && p.result);
   const n = done.length;
   $("progress").textContent = `n=${n} / ${pubs.length}`;
+
+  const wallMs = runStartedAt ? performance.now() - runStartedAt : 0;
+  if (running || n) {
+    $("val-wall").textContent =
+      wallMs >= 1000 ? `${(wallMs / 1000).toFixed(1)} s` : `${Math.round(wallMs)} ms`;
+  }
+
   if (!n) {
-    $("val-jev-acc").textContent = "—";
-    $("val-jev-f1").textContent = "—";
+    $("val-acc").textContent = "—";
+    $("val-f1").textContent = "—";
     $("val-latency").textContent = "—";
-    $("bar-jev-acc").style.width = "0%";
-    $("bar-jev-f1").style.width = "0%";
+    $("val-cost").textContent = "—";
+    $("cost-per").textContent = "— / paper";
+    $("bar-acc").style.width = "0%";
+    $("bar-f1").style.width = "0%";
     return;
   }
-  let correct = 0, tp = 0, fp = 0, fn = 0, lat = 0;
+
+  let correct = 0,
+    tp = 0,
+    fp = 0,
+    fn = 0,
+    lat = 0,
+    tok = 0,
+    tokN = 0,
+    liveTok = false;
   for (const p of done) {
     const pred = p.result.pred;
     const gold = p.gold;
@@ -151,16 +235,36 @@ function updateScoreboard() {
     if (gold !== "RCT" && pred === "RCT") fp++;
     if (gold === "RCT" && pred !== "RCT") fn++;
     lat += Number(p.result.latency_ms) || 0;
+    const t = p.result.input_tokens ?? p.result.input_tokens_est;
+    if (t != null && t !== "" && Number.isFinite(Number(t))) {
+      tok += Number(t);
+      tokN++;
+      if (p.result.input_tokens != null && p.result.input_tokens !== "") liveTok = true;
+    }
   }
   const acc = (correct / n) * 100;
   const prec = tp + fp ? tp / (tp + fp) : 0;
   const rec = tp + fn ? tp / (tp + fn) : 0;
   const f1 = (prec + rec ? (2 * prec * rec) / (prec + rec) : 0) * 100;
-  $("bar-jev-acc").style.width = `${Math.min(acc, 100)}%`;
-  $("bar-jev-f1").style.width = `${Math.min(f1, 100)}%`;
-  $("val-jev-acc").textContent = `${acc.toFixed(2)}%`;
-  $("val-jev-f1").textContent = `${f1.toFixed(2)}%`;
+  $("bar-acc").style.width = `${Math.min(acc, 100)}%`;
+  $("bar-f1").style.width = `${Math.min(f1, 100)}%`;
+  $("val-acc").textContent = `${acc.toFixed(2)}%`;
+  $("val-f1").textContent = `${f1.toFixed(2)}%`;
   $("val-latency").textContent = `${(lat / n).toFixed(0)} ms`;
+
+  if (tokN) {
+    const meanTok = tok / tokN;
+    const shownCost = tokenCost(meanTok * n);
+    $("val-cost").textContent = `${fmtUsd(shownCost)}${liveTok ? "" : " est"}`;
+    $("cost-per").textContent = `${fmtUsd(tokenCost(meanTok))} / paper${liveTok ? "" : " · est"}`;
+    $("cost-detail").textContent = liveTok
+      ? `$0.042/MTok in · out free · ${Math.round(tok).toLocaleString()} tok`
+      : `$0.042/MTok in · Replay uses token estimate (no live usage log)`;
+  } else {
+    $("val-cost").textContent = "—";
+    $("cost-per").textContent = "— / paper";
+    $("cost-detail").textContent = "$0.042 / MTok in · out free";
+  }
 }
 
 function setBusy(busy) {
@@ -183,9 +287,39 @@ function resetStates() {
   updateScoreboard();
 }
 
+async function loadQuestions() {
+  try {
+    const res = await fetch("/api/questions");
+    if (!res.ok) return;
+    questionsMeta = await res.json();
+    $("q-combine").textContent = questionsMeta.combine || COMBINE_TEXT;
+    const list = $("q-list");
+    list.innerHTML = "";
+    for (const q of questionsMeta.questions || []) {
+      const card = document.createElement("div");
+      card.className = "q-card";
+      const crit = Object.entries(q.criteria || {})
+        .map(([k, v]) => `<li><strong>${k}</strong>: ${v}</li>`)
+        .join("");
+      card.innerHTML = `
+        <div><span class="qid">${q.id}</span><span class="qtype">${q.type || ""}</span></div>
+        <p class="instr">${q.instructions || ""}</p>
+        <ul>${crit}</ul>`;
+      list.appendChild(card);
+    }
+  } catch (_) {
+    $("q-combine").textContent = COMBINE_TEXT;
+  }
+}
+
+function openDrawer(open) {
+  $("questions-drawer").hidden = !open;
+  $("drawer-backdrop").hidden = !open;
+}
+
 async function loadDemo() {
   const res = await fetch("/api/demo");
-  if (!res.ok) throw new Error("Missing data/demo_200.csv — run: python -m src.prepare_demo");
+  if (!res.ok) throw new Error("Missing data/demo_200.csv");
   const data = await res.json();
   pubs = (data.rows || []).map((r) => ({
     demo_idx: Number(r.demo_idx),
@@ -198,23 +332,33 @@ async function loadDemo() {
   pubs.sort((a, b) => a.demo_idx - b.demo_idx);
   renderGrid();
   updateScoreboard();
-  $("status").textContent = `${pubs.length} pubs ready · hybrid default`;
-  $("btn-start").textContent = "Start";
+  $("status").textContent = `${pubs.length} pubs · r3_ship`;
+  await loadQuestions();
 }
 
 async function classifyOne(pub) {
   const res = await fetch("/api/classify", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      pmid: pub.pmid,
-      title: pub.title,
-      abstract: pub.abstract,
-    }),
+    body: JSON.stringify({ pmid: pub.pmid, title: pub.title, abstract: pub.abstract }),
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
   return data;
+}
+
+async function runPool(workerFn) {
+  const workers = Math.max(1, Math.min(32, Number($("sel-workers").value) || DEFAULT_WORKERS));
+  let next = 0;
+  const total = pubs.length;
+  async function worker() {
+    while (!stopFlag) {
+      const i = next++;
+      if (i >= total) return;
+      await workerFn(pubs[i], i);
+    }
+  }
+  await Promise.all(Array.from({ length: workers }, () => worker()));
 }
 
 async function runLive() {
@@ -223,43 +367,43 @@ async function runLive() {
   stopFlag = false;
   setBusy(true);
   resetStates();
+  runStartedAt = performance.now();
   const workers = Math.max(1, Math.min(32, Number($("sel-workers").value) || DEFAULT_WORKERS));
-  $("status").textContent = `Live hybrid · ${workers} workers`;
+  $("status").textContent = `Live r3_ship · ${workers} workers`;
+  $("wall-note").textContent = "live";
 
-  let next = 0;
-  const total = pubs.length;
-
-  async function worker() {
-    while (!stopFlag) {
-      const i = next++;
-      if (i >= total) return;
-      const pub = pubs[i];
-      pub.state = "running";
-      updateBlock(pub.demo_idx);
-      if (selectedIdx === pub.demo_idx) showDetail(pub);
-      try {
-        const result = await classifyOne(pub);
-        if (stopFlag) return;
-        pub.result = result;
-        pub.state = "done";
-      } catch (e) {
-        pub.error = String(e.message || e);
-        pub.state = "error";
-        $("status").textContent = pub.error.slice(0, 80);
-      }
-      updateBlock(pub.demo_idx);
-      if (selectedIdx === pub.demo_idx) showDetail(pub);
-      updateScoreboard();
+  await runPool(async (pub) => {
+    pub.state = "running";
+    updateBlock(pub.demo_idx);
+    if (selectedIdx === pub.demo_idx) showDetail(pub);
+    try {
+      const result = await classifyOne(pub);
+      if (stopFlag) return;
+      pub.result = result;
+      pub.state = "done";
+    } catch (e) {
+      pub.error = String(e.message || e);
+      pub.state = "error";
+      $("status").textContent = pub.error.slice(0, 80);
     }
-  }
+    updateBlock(pub.demo_idx);
+    if (selectedIdx === pub.demo_idx) showDetail(pub);
+    updateScoreboard();
+  });
 
-  await Promise.all(Array.from({ length: workers }, () => worker()));
   setBusy(false);
-  $("status").textContent = stopFlag ? "Stopped" : `Done · ${pubs.filter((p) => p.state === "done").length}/${total}`;
+  $("wall-note").textContent = "final";
+  updateScoreboard();
+  $("status").textContent = stopFlag
+    ? "Stopped"
+    : `Done · ${pubs.filter((p) => p.state === "done").length}/${pubs.length}`;
 }
 
 function rowToResult(row) {
   const num = (v) => (v === "" || v == null ? null : Number(v));
+  const input_tokens = num(row.input_tokens);
+  const input_tokens_est = num(row.input_tokens_est);
+  const toks = input_tokens ?? input_tokens_est;
   return {
     pred: row.pred,
     choice: row.choice || null,
@@ -272,8 +416,15 @@ function rowToResult(row) {
     is_cluster_random: num(row.is_cluster_random),
     is_secondary_or_nested_only: num(row.is_secondary_or_nested_only),
     is_protocol_or_single_arm: num(row.is_protocol_or_single_arm),
+    reports_or_reanalyzes_an_rct: num(row.reports_or_reanalyzes_an_rct),
+    parent_study_was_rct: num(row.parent_study_was_rct),
+    experimental_allocation_implied: num(row.experimental_allocation_implied),
+    is_review_or_meta: num(row.is_review_or_meta),
     latency_ms: Number(row.latency_ms),
-    rule: row.rule || "hybrid_cd_choice_plus_r2_nouls",
+    input_tokens,
+    input_tokens_est,
+    cost_usd: tokenCost(toks),
+    rule: row.rule || RULE_ID,
   };
 }
 
@@ -283,7 +434,9 @@ async function runReplay() {
   stopFlag = false;
   setBusy(true);
   resetStates();
-  $("status").textContent = "Loading cached hybrid…";
+  runStartedAt = performance.now();
+  $("status").textContent = "Loading cached r3_ship…";
+  $("wall-note").textContent = "replay";
 
   const res = await fetch("/api/predictions");
   if (!res.ok) {
@@ -296,53 +449,53 @@ async function runReplay() {
   for (const row of data.rows || []) byPmid.set(String(row.pmid), row);
 
   const workers = Math.max(1, Math.min(32, Number($("sel-workers").value) || DEFAULT_WORKERS));
-  $("status").textContent = `Replay hybrid · ${workers} workers`;
+  $("status").textContent = `Replay r3_ship · ${workers} workers`;
 
-  let next = 0;
-  const total = pubs.length;
-
-  async function worker() {
-    while (!stopFlag) {
-      const i = next++;
-      if (i >= total) return;
-      const pub = pubs[i];
-      pub.state = "running";
-      updateBlock(pub.demo_idx);
-      await sleep(40 + (i % workers) * 12);
-      if (stopFlag) return;
-      const row = byPmid.get(pub.pmid);
-      if (!row) {
-        pub.state = "error";
-        pub.error = "missing in cache";
-      } else {
-        pub.result = rowToResult(row);
-        pub.state = "done";
-      }
-      updateBlock(pub.demo_idx);
-      if (selectedIdx === pub.demo_idx) showDetail(pub);
-      updateScoreboard();
+  await runPool(async (pub, i) => {
+    pub.state = "running";
+    updateBlock(pub.demo_idx);
+    await sleep(35 + (i % workers) * 10);
+    if (stopFlag) return;
+    const row = byPmid.get(pub.pmid);
+    if (!row) {
+      pub.state = "error";
+      pub.error = "missing in cache";
+    } else {
+      pub.result = rowToResult(row);
+      pub.state = "done";
     }
-  }
+    updateBlock(pub.demo_idx);
+    if (selectedIdx === pub.demo_idx) showDetail(pub);
+    updateScoreboard();
+  });
 
-  await Promise.all(Array.from({ length: workers }, () => worker()));
   setBusy(false);
+  $("wall-note").textContent = "final";
+  updateScoreboard();
   $("status").textContent = stopFlag
     ? "Stopped"
-    : `Replay done · hybrid Acc 89.5% / F1 88.4% · vs BioBERT ${BIO_ACC}% / ${BIO_F1}%`;
+    : `Replay done · r3_ship Acc 93.5% / F1 93.12% · vs BioBERT ${BIO_ACC}% / ${BIO_F1}%`;
 }
 
-$("btn-start").addEventListener("click", () => runLive().catch((e) => {
-  setBusy(false);
-  $("status").textContent = String(e.message || e);
-}));
-$("btn-replay").addEventListener("click", () => runReplay().catch((e) => {
-  setBusy(false);
-  $("status").textContent = String(e.message || e);
-}));
+$("btn-start").addEventListener("click", () =>
+  runLive().catch((e) => {
+    setBusy(false);
+    $("status").textContent = String(e.message || e);
+  })
+);
+$("btn-replay").addEventListener("click", () =>
+  runReplay().catch((e) => {
+    setBusy(false);
+    $("status").textContent = String(e.message || e);
+  })
+);
 $("btn-stop").addEventListener("click", () => {
   stopFlag = true;
   $("status").textContent = "Stopping…";
 });
+$("btn-questions").addEventListener("click", () => openDrawer(true));
+$("btn-close-q").addEventListener("click", () => openDrawer(false));
+$("drawer-backdrop").addEventListener("click", () => openDrawer(false));
 
 loadDemo().catch((e) => {
   $("status").textContent = String(e.message || e);

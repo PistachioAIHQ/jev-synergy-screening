@@ -1,0 +1,34 @@
+{
+  "reports_or_reanalyzes_an_rct": {
+    "type": "noul",
+    "instructions": "This paper reports, reanalyzes, screens baseline participants for, nests within, follows on from, or is an ancillary/process/qualitative analysis of a human randomized / randomised trial — even if THIS abstract is not the primary efficacy results paper. Mere background citations of RCTs or literature reviews of RCTs do NOT count.",
+    "criteria": {
+      "true": "Abstract is about data/participants from a specific RCT or parent randomized trial (secondary analysis, screening for an RCT, nested qualitative, reanalysis of RCT arms, continuation/follow-on of an RCT)",
+      "false": "Not reporting or reanalyzing a specific RCT; pure observational study, systematic review/meta-analysis of the literature, or unrelated to any RCT"
+    }
+  },
+  "parent_study_was_rct": {
+    "type": "noul",
+    "instructions": "The abstract clearly indicates that a named parent, source, screening, or related study was a randomized / randomised controlled trial (e.g. SETTING = RCT, nested in an RCT, reanalysis of RCT arms, follow-on of an RCT). Background mentions that RCTs exist in the field do NOT count.",
+    "criteria": {
+      "true": "Clear evidence the parent/source study was an RCT or that this work analyzes/nests within a randomized trial",
+      "false": "No clear parent RCT; mere citation of RCTs in background does not count"
+    }
+  },
+  "experimental_allocation_implied": {
+    "type": "noul",
+    "instructions": "Humans were experimentally assigned to conditions, arms, sites, treatments, or within-subject/contralateral conditions (including psychology lab 'Experiment N' condition manipulations) even if the word random/randomised is absent. Do NOT count pure observational grouping by disease status or self-selected exposures.",
+    "criteria": {
+      "true": "Clear experimental allocation or condition assignment of human participants",
+      "false": "Pure observational/retrospective grouping without experimental assignment, review, or no human experimental conditions"
+    }
+  },
+  "is_review_or_meta": {
+    "type": "noul",
+    "instructions": "This abstract is a systematic review, meta-analysis, narrative review, or guideline synthesizing other studies — not a primary empirical study of enrolled participants",
+    "criteria": {
+      "true": "Review/meta-analysis/guideline",
+      "false": "Primary empirical study (trial, cohort, experiment, case series, etc.)"
+    }
+  }
+}

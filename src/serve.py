@@ -1,4 +1,4 @@
-"""Tiny static+API server for the screenable web UI (v2: grid + live hybrid classify)."""
+"""Tiny static+API server for the screenable web UI (v2: grid + live r3_ship classify)."""
 from __future__ import annotations
 
 import argparse
@@ -10,8 +10,14 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from .config import DEMO_CSV, METRICS_JSON, PREDICTIONS_CSV, ROOT, WEB_DIR
-from .hybrid import NOUL_KEYS
+from .hybrid import ALL_NOUL_KEYS as NOUL_KEYS
+from .hybrid import build_round3_questions, hybrid_combine
 from .jev_client import classify, load_api_key
+
+# TypeSafe Jev pricing used in the demo scoreboard (output free).
+INPUT_USD_PER_MTOK = 0.042
+OUTPUT_USD_PER_MTOK = 0.0
+RULE_ID = "r3_ship_cd_choice_plus_reports_exp095"
 
 
 def _finite(x) -> float | None:
@@ -22,6 +28,15 @@ def _finite(x) -> float | None:
     if math.isnan(v) or math.isinf(v):
         return None
     return v
+
+
+def _cost_usd(input_tokens: float | int | None) -> float | None:
+    if input_tokens is None:
+        return None
+    try:
+        return float(input_tokens) * INPUT_USD_PER_MTOK / 1_000_000.0
+    except (TypeError, ValueError):
+        return None
 
 
 class Handler(SimpleHTTPRequestHandler):
@@ -41,8 +56,18 @@ class Handler(SimpleHTTPRequestHandler):
             return self._json_file(PREDICTIONS_CSV, as_csv=True)
         if path == "/api/metrics":
             return self._json_file(METRICS_JSON)
+        if path == "/api/questions":
+            return self._questions()
         if path == "/api/health":
-            return self._json({"ok": True, "ui": "v2", "rule": "hybrid_cd_choice_plus_r2_nouls"})
+            return self._json(
+                {
+                    "ok": True,
+                    "ui": "v2",
+                    "rule": RULE_ID,
+                    "input_usd_per_mtok": INPUT_USD_PER_MTOK,
+                    "output_usd_per_mtok": OUTPUT_USD_PER_MTOK,
+                }
+            )
         return super().do_GET()
 
     def do_POST(self):  # noqa: N802
@@ -67,6 +92,34 @@ class Handler(SimpleHTTPRequestHandler):
                     }
                 )
         return self._json({"rows": rows, "n": len(rows)})
+
+    def _questions(self) -> None:
+        qs = build_round3_questions()
+        # Flatten for UI: id, type, instructions, criteria + how it feeds combine
+        items = []
+        for qid, q in qs.items():
+            items.append(
+                {
+                    "id": qid,
+                    "type": q.get("type"),
+                    "instructions": q.get("instructions") or "",
+                    "criteria": q.get("criteria") or {},
+                }
+            )
+        return self._json(
+            {
+                "rule": RULE_ID,
+                "combine": (
+                    "RCT iff choice==RCT "
+                    "OR ((rand|cluster|parallel)>=0.5 AND secondary<0.5 AND protocol<0.5) "
+                    "OR (reports>=0.5 AND review<0.5) "
+                    "OR (experimental_allocation_implied>=0.95 AND secondary<0.5 AND protocol<0.5 AND review<0.5)"
+                ),
+                "questions": items,
+                "input_usd_per_mtok": INPUT_USD_PER_MTOK,
+                "output_usd_per_mtok": OUTPUT_USD_PER_MTOK,
+            }
+        )
 
     def _classify(self) -> None:
         length = int(self.headers.get("Content-Length") or 0)
@@ -95,6 +148,10 @@ class Handler(SimpleHTTPRequestHandler):
         except Exception as e:  # noqa: BLE001
             return self._json({"error": str(e), "pmid": pmid}, status=502)
 
+        usage = out.get("usage") if isinstance(out.get("usage"), dict) else {}
+        input_tokens = out.get("input_tokens")
+        if input_tokens is None and usage:
+            input_tokens = usage.get("input_tokens")
         nouls = {k: _finite(out.get(k)) for k in NOUL_KEYS}
         return self._json(
             {
@@ -113,8 +170,12 @@ class Handler(SimpleHTTPRequestHandler):
                 "answers": out.get("answers"),
                 "latency_ms": out.get("latency_ms"),
                 "model": out.get("model"),
-                "rule": out.get("rule") or "hybrid_cd_choice_plus_r2_nouls",
+                "usage": usage or None,
+                "input_tokens": input_tokens,
+                "cost_usd": _cost_usd(input_tokens),
+                "rule": out.get("rule") or RULE_ID,
                 "aggressive": False,
+                "psych_or": False,
             }
         )
 
@@ -136,7 +197,7 @@ class Handler(SimpleHTTPRequestHandler):
         body = json.dumps(obj, allow_nan=False).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
-        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Content-Length", str(body.__len__()))
         self._cors()
         self.end_headers()
         self.wfile.write(body)
@@ -152,11 +213,11 @@ def main() -> None:
     if not DEMO_CSV.exists():
         print(f"WARN: {DEMO_CSV} missing — run: python -m src.prepare_demo")
     if not PREDICTIONS_CSV.exists():
-        print(f"WARN: {PREDICTIONS_CSV} missing — Replay cached needs: python -m src.run_eval")
+        print(f"WARN: {PREDICTIONS_CSV} missing — Replay cached needs film cache")
     httpd = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
-    print(f"Demo UI v2 (hybrid) → http://127.0.0.1:{args.port}/  (cwd web={WEB_DIR})")
+    print(f"Demo UI v2 (r3_ship) → http://127.0.0.1:{args.port}/  (cwd web={WEB_DIR})")
     print(f"Repo root {ROOT}")
-    print("GET /api/demo · POST /api/classify · GET /api/predictions (replay)")
+    print("GET /api/demo · /api/questions · POST /api/classify · GET /api/predictions")
     httpd.serve_forever()
 
 

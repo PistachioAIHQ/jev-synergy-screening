@@ -3,25 +3,25 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>Jev × Bat4RCT — hybrid RCT screening (UI v2)</title>
+<title>Jev × Bat4RCT — r3_ship</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Instrument+Sans:wght@400;600;700&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet"/>
 <link rel="stylesheet" href="styles.css"/>
 </head>
 <body>
-  <div class="bg"></div>
-  <header>
+  <header class="top">
     <div class="brand">
-      <span class="pill">TypeSafe · Jev · hybrid</span>
-      <h1>Bat4RCT screening</h1>
-      <p>200 pubs · CD Choice + R2 nouls · Acc 89.5% / F1 88.4% vs BioBERT 96.37% / 90.85%</p>
+      <div class="mark">Jev</div>
+      <div>
+        <h1>Bat4RCT screening</h1>
+        <p class="sub">r3_ship · 200 pubs · questions → code combines</p>
+      </div>
     </div>
     <div class="controls">
       <button id="btn-start" class="primary">Start</button>
-      <button id="btn-replay" class="ghost" title="Replay results/predictions.csv without API calls">Replay cached</button>
+      <button id="btn-replay" class="ghost" title="Replay results/predictions.csv">Replay cached</button>
       <button id="btn-stop" class="ghost" disabled>Stop</button>
-      <label class="toggle" title="Client concurrency for live Start">
-        Workers
+      <label class="field">Workers
         <select id="sel-workers">
           <option value="4">4</option>
           <option value="8" selected>8</option>
@@ -29,38 +29,47 @@
           <option value="16">16</option>
         </select>
       </label>
+      <button id="btn-questions" class="ghost" type="button">Questions</button>
       <span class="status" id="status">Loading…</span>
     </div>
   </header>
 
-  <section class="scoreboard sticky" id="scoreboard">
-    <div class="score-left">
-      <div class="metric">
-        <span class="label">Acc</span>
-        <span class="big" id="val-jev-acc">—</span>
-        <span class="vs">vs BioBERT <strong>96.37%</strong></span>
-        <div class="track"><div class="fill jev" id="bar-jev-acc"></div></div>
-        <div class="track thin"><div class="fill base" style="width:96.37%"></div></div>
-      </div>
-      <div class="metric">
-        <span class="label">F1</span>
-        <span class="big" id="val-jev-f1">—</span>
-        <span class="vs">vs BioBERT <strong>90.85%</strong></span>
-        <div class="track"><div class="fill jev" id="bar-jev-f1"></div></div>
-        <div class="track thin"><div class="fill base" style="width:90.85%"></div></div>
-      </div>
-      <div class="metric latency-metric">
-        <span class="label">Mean latency</span>
-        <span class="big" id="val-latency">—</span>
-        <span class="vs" id="progress">n=0 / 200</span>
-      </div>
+  <section class="scoreboard" id="scoreboard">
+    <div class="metric">
+      <span class="label">Acc</span>
+      <span class="big mono" id="val-acc">—</span>
+      <span class="vs">vs BioBERT <span class="mono">96.37%</span></span>
+      <div class="track"><div class="fill" id="bar-acc"></div></div>
+    </div>
+    <div class="metric">
+      <span class="label">F1</span>
+      <span class="big mono" id="val-f1">—</span>
+      <span class="gloss">balances catching real RCTs vs false alarms</span>
+      <span class="vs">vs BioBERT <span class="mono">90.85%</span></span>
+      <div class="track"><div class="fill" id="bar-f1"></div></div>
+    </div>
+    <div class="metric">
+      <span class="label">Mean latency</span>
+      <span class="big mono" id="val-latency">—</span>
+      <span class="vs" id="progress">n=0 / 200</span>
+    </div>
+    <div class="metric">
+      <span class="label">Wall time</span>
+      <span class="big mono" id="val-wall">—</span>
+      <span class="vs" id="wall-note">live + final</span>
+    </div>
+    <div class="metric">
+      <span class="label">Est. cost</span>
+      <span class="big mono" id="val-cost">—</span>
+      <span class="vs" id="cost-detail">$0.042 / MTok in · out free</span>
+      <span class="vs mono" id="cost-per">— / paper</span>
     </div>
     <div class="legend">
-      <span><i class="sw pending"></i> pending</span>
-      <span><i class="sw running"></i> running</span>
-      <span><i class="sw agree"></i> agree</span>
-      <span><i class="sw disagree"></i> disagree</span>
-      <span><i class="sw amber"></i> low conf (&lt;0.55)</span>
+      <span><i class="sw pending"></i>pending</span>
+      <span><i class="sw running"></i>running</span>
+      <span><i class="sw agree"></i>agree</span>
+      <span><i class="sw disagree"></i>disagree</span>
+      <span><i class="sw amber"></i>low conf</span>
     </div>
   </section>
 
@@ -69,37 +78,53 @@
       <div class="grid" id="grid" aria-label="200 publication blocks"></div>
     </div>
     <aside class="detail" id="detail">
-      <div class="detail-empty" id="detail-empty">Click a block for Choice, probs, confidence, each noul, gold, and agree/disagree.</div>
+      <div class="detail-empty" id="detail-empty">Select a block. Detail shows each Choice/Noul answer that fed the combine.</div>
       <div class="detail-body" id="detail-body" hidden>
         <div class="meta">
-          <span id="d-pmid"></span>
-          <span id="d-idx"></span>
+          <span class="mono" id="d-pmid"></span>
+          <span class="mono muted" id="d-idx"></span>
         </div>
         <h2 id="d-title"></h2>
-        <p id="d-abstract"></p>
-        <div class="verdict-grid">
-          <div class="cell"><span class="k">Hybrid pred</span><span class="v" id="d-pred">—</span></div>
+        <p class="abstract" id="d-abstract"></p>
+        <div class="verdict">
+          <div class="cell"><span class="k">Combine pred</span><span class="v" id="d-pred">—</span></div>
           <div class="cell"><span class="k">Choice</span><span class="v" id="d-choice">—</span></div>
           <div class="cell"><span class="k">Confidence</span><span class="v mono" id="d-conf">—</span></div>
           <div class="cell"><span class="k">P(RCT)</span><span class="v mono" id="d-p-rct">—</span></div>
           <div class="cell"><span class="k">P(non_RCT)</span><span class="v mono" id="d-p-non">—</span></div>
-          <div class="cell"><span class="k">has_random_allocation</span><span class="v mono" id="d-noul-rand">—</span></div>
-          <div class="cell"><span class="k">parallel_intervention_arms</span><span class="v mono" id="d-noul-par">—</span></div>
-          <div class="cell"><span class="k">is_cluster_random</span><span class="v mono" id="d-noul-clu">—</span></div>
-          <div class="cell"><span class="k">is_secondary_or_nested_only</span><span class="v mono" id="d-noul-sec">—</span></div>
-          <div class="cell"><span class="k">is_protocol_or_single_arm</span><span class="v mono" id="d-noul-prot">—</span></div>
           <div class="cell"><span class="k">Latency</span><span class="v mono" id="d-lat">—</span></div>
+          <div class="cell"><span class="k">Tokens in</span><span class="v mono" id="d-tok">—</span></div>
+          <div class="cell"><span class="k">Cost</span><span class="v mono" id="d-cost">—</span></div>
           <div class="cell"><span class="k">Gold</span><span class="v" id="d-gold">—</span></div>
           <div class="cell"><span class="k">Match</span><span class="v" id="d-match">—</span></div>
         </div>
+        <h3 class="answers-h">Answers → combine</h3>
+        <div class="answers" id="d-answers"></div>
+        <p class="combine-line mono" id="d-combine"></p>
       </div>
     </aside>
   </main>
 
+  <aside class="drawer" id="questions-drawer" hidden>
+    <div class="drawer-head">
+      <div>
+        <h2>Questions</h2>
+        <p class="muted">Every Choice/Noul sent to Jev. Code combines the answers.</p>
+      </div>
+      <button type="button" class="ghost" id="btn-close-q">Close</button>
+    </div>
+    <pre class="combine-pre mono" id="q-combine"></pre>
+    <div class="q-list" id="q-list"></div>
+  </aside>
+  <div class="drawer-backdrop" id="drawer-backdrop" hidden></div>
+
   <footer>
-    Hybrid default (not aggressive): Choice==RCT OR ((rand|cluster|parallel)≥0.5 ∧ secondary&lt;0.5 ∧ protocol&lt;0.5).
-    Amber: confidence &lt; 0.55. · Kim et al. PLOS ONE 2023 · <a href="https://doi.org/10.1371/journal.pone.0283342">doi</a>
-    · <a href="https://github.com/jennak22/Bat4RCT">Bat4RCT</a>
+    <span class="mono">r3_ship</span>
+    · choice==RCT OR ((rand|cluster|parallel)≥0.5 ∧ sec&lt;0.5 ∧ prot&lt;0.5)
+    OR (reports≥0.5 ∧ review&lt;0.5)
+    OR (exp≥0.95 ∧ sec&lt;0.5 ∧ prot&lt;0.5 ∧ review&lt;0.5)
+    · Acc <span class="mono">93.5%</span> / F1 <span class="mono">93.12%</span> · FP=1 · psych@0.5 not shipped
+    · <a href="https://doi.org/10.1371/journal.pone.0283342">Bat4RCT</a>
     · <a href="https://docs.typesafe.ai/introduction">TypeSafe</a>
   </footer>
   <script src="app.js"></script>

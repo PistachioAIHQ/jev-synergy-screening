@@ -10,8 +10,10 @@ import requests
 
 from .config import JEV_MODEL, JEV_URL, LABEL_NON, LABEL_RCT
 from .hybrid import (
+    ALL_NOUL_KEYS,
     NOUL_KEYS,
     build_hybrid_questions,
+    build_round3_questions,
     extract_nouls,
     hybrid_combine,
 )
@@ -34,14 +36,14 @@ def load_api_key() -> str:
 
 
 def build_questions() -> dict[str, Any]:
-    """DEFAULT: CD medium Choice + round-2 atomic nouls (hybrid)."""
-    return build_hybrid_questions()
+    """DEFAULT: CD medium Choice + full round-3 question map (r3_ship)."""
+    return build_round3_questions()
 
 
 def classify(text: str, api_key: str | None = None, timeout: float = 60.0) -> dict[str, Any]:
-    """POST systemone with hybrid questions; return hybrid pred + full per-question answers."""
+    """POST systemone with round3 (r3_ship) questions; return r3_ship pred + full per-question answers."""
     key = api_key or load_api_key()
-    questions = build_hybrid_questions()
+    questions = build_round3_questions()
     payload = {
         "state": text,
         "model": JEV_MODEL,
@@ -82,7 +84,7 @@ def classify(text: str, api_key: str | None = None, timeout: float = 60.0) -> di
             LABEL_RCT: float(probs.get(LABEL_RCT) or 0.0),
             LABEL_NON: float(probs.get(LABEL_NON) or 0.0),
         },
-        **{k: finite_nouls[k] for k in NOUL_KEYS},
+        **{k: finite_nouls[k] for k in ALL_NOUL_KEYS},
         "answers": {
             "label": {
                 "choice": choice,
@@ -94,13 +96,16 @@ def classify(text: str, api_key: str | None = None, timeout: float = 60.0) -> di
             },
             **{
                 k: {"noul": finite_nouls[k]}
-                for k in NOUL_KEYS
+                for k in ALL_NOUL_KEYS
             },
         },
         "latency_ms": latency_ms,
         "model": data.get("model"),
         "usage": data.get("usage"),
-        "rule": "hybrid_cd_choice_plus_r2_nouls",
+        "input_tokens": (data.get("usage") or {}).get("input_tokens")
+            if isinstance(data.get("usage"), dict)
+            else None,
+        "rule": "r3_ship_cd_choice_plus_reports_exp095",
         # legacy alias (first positive noul-ish signal for older UI)
         "noul_is_rct": finite_nouls.get("has_random_allocation"),
     }

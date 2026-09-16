@@ -1,0 +1,21 @@
+pmid,cluster,notes
+25866811,observational_phase1,phase I single-arm dose; protocol noul high
+25754896,observational,paired-stimulus preference; secondary+protocol high
+23892047,observational_phase1,C3a priming safety; protocol high
+21840055,secondary_weak,STOP-HF statin adherence; secondary high, weak RCT link
+23312232,secondary_parent_rct,KEEPS screening cross-section; SETTING=RCT
+22030767,secondary_weak,QI secondary of ULTRA; not clearly RCT parent
+32534135,secondary_parent_rct,mentions ongoing SLIP II RCT; secondary+rand/parallel high
+28038841,secondary_followon,DOEE ortho-k parallel groups; secondary+parallel high
+25888270,secondary_reanalysis,Project Data Sphere RCT control arms; secondary+rand
+22248375,psych_experiment,Experiment 1/2 bizarre imagery; no random*
+28703621,psych_experiment,Experiment 1-3 attentional accounting; no random*
+28485200,observational,cardiothoracic ultrasound AHF
+21978010,observational,temporal lobe educational interventions
+28778281,observational,IVF progesterone epigenetic
+21607966,observational,electrodiagnostic diabetes
+26863870,secondary_parent_rct,ePrime nested qualitative; parents randomised
+24052368,observational,hyaluronic acid filler
+22093067,within_subject,contralateral NICU skin sites
+23837219,observational,keratometric comparison
+26563287,observational,osteosarcopenia

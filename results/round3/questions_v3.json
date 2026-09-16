@@ -1,0 +1,82 @@
+{
+  "label": {
+    "type": "choice",
+    "instructions": "Classify this MEDLINE title and abstract as RCT or non_RCT. An RCT randomly assigns participants to intervention vs control/comparison.",
+    "criteria": {
+      "RCT": "Reports a randomized controlled trial (or randomised controlled trial): participants were randomly allocated to intervention arms.",
+      "non_RCT": "Not an RCT: observational study, case report/series, review, meta-analysis, guideline, commentary, letter, animal-only, or unclear."
+    }
+  },
+  "has_random_allocation": {
+    "type": "noul",
+    "instructions": "The abstract states that humans (or human clusters/sites) were randomly allocated, randomly assigned, randomised, or underwent random allocation to study arms",
+    "criteria": {
+      "true": "Explicit random*/randomised allocation or assignment of participants or clusters to arms",
+      "false": "No explicit random allocation language (ignore 'randomly selected' for sampling only)"
+    }
+  },
+  "parallel_intervention_arms": {
+    "type": "noul",
+    "instructions": "The abstract reports a prospective human study comparing two or more intervention/control arms in parallel (participants divided into groups receiving different interventions)",
+    "criteria": {
+      "true": "Clear parallel arms with different interventions or intervention vs control",
+      "false": "Single-arm, dose-escalation without concurrent control, pure observational grouping, or not a multi-arm intervention study"
+    }
+  },
+  "is_cluster_random": {
+    "type": "noul",
+    "instructions": "Randomization was at the cluster, site, hospital, school, or group level (cluster-randomized / cluster-randomised trial)",
+    "criteria": {
+      "true": "Sites/clusters randomly assigned to interventions",
+      "false": "Not cluster randomization"
+    }
+  },
+  "is_secondary_or_nested_only": {
+    "type": "noul",
+    "instructions": "This abstract is ONLY a secondary analysis, screening/baseline cross-section, qualitative process evaluation, methods/ancillary paper, or reanalysis of data from a parent trial \u2014 not reporting the primary randomized allocation results of this study",
+    "criteria": {
+      "true": "Secondary/nested/screening/reanalysis/ancillary only",
+      "false": "Reports (or is) the randomized trial itself"
+    }
+  },
+  "is_protocol_or_single_arm": {
+    "type": "noul",
+    "instructions": "This is a study protocol without results, OR a single-arm / dose-escalation / historical-control clinical study without concurrent randomized comparison",
+    "criteria": {
+      "true": "Protocol-only or non-randomized single-arm/dose-escalation/historical-control",
+      "false": "Not protocol-only and not single-arm-without-random-comparison"
+    }
+  },
+  "reports_or_reanalyzes_an_rct": {
+    "type": "noul",
+    "instructions": "This paper reports, reanalyzes, screens baseline participants for, nests within, follows on from, or is an ancillary/process/qualitative analysis of a human randomized / randomised trial \u2014 even if THIS abstract is not the primary efficacy results paper. Mere background citations of RCTs or literature reviews of RCTs do NOT count.",
+    "criteria": {
+      "true": "Abstract is about data/participants from a specific RCT or parent randomized trial (secondary analysis, screening for an RCT, nested qualitative, reanalysis of RCT arms, continuation/follow-on of an RCT)",
+      "false": "Not reporting or reanalyzing a specific RCT; pure observational study, systematic review/meta-analysis of the literature, or unrelated to any RCT"
+    }
+  },
+  "parent_study_was_rct": {
+    "type": "noul",
+    "instructions": "The abstract clearly indicates that a named parent, source, screening, or related study was a randomized / randomised controlled trial (e.g. SETTING = RCT, nested in an RCT, reanalysis of RCT arms, follow-on of an RCT). Background mentions that RCTs exist in the field do NOT count.",
+    "criteria": {
+      "true": "Clear evidence the parent/source study was an RCT or that this work analyzes/nests within a randomized trial",
+      "false": "No clear parent RCT; mere citation of RCTs in background does not count"
+    }
+  },
+  "experimental_allocation_implied": {
+    "type": "noul",
+    "instructions": "Humans were experimentally assigned to conditions, arms, sites, treatments, or within-subject/contralateral conditions (including psychology lab 'Experiment N' condition manipulations) even if the word random/randomised is absent. Do NOT count pure observational grouping by disease status or self-selected exposures.",
+    "criteria": {
+      "true": "Clear experimental allocation or condition assignment of human participants",
+      "false": "Pure observational/retrospective grouping without experimental assignment, review, or no human experimental conditions"
+    }
+  },
+  "is_review_or_meta": {
+    "type": "noul",
+    "instructions": "This abstract is a systematic review, meta-analysis, narrative review, or guideline synthesizing other studies \u2014 not a primary empirical study of enrolled participants",
+    "criteria": {
+      "true": "Review/meta-analysis/guideline",
+      "false": "Primary empirical study (trial, cohort, experiment, case series, etc.)"
+    }
+  }
+}
