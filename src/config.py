@@ -49,6 +49,11 @@ ANTHROPIC_MODEL = "claude-sonnet-4-5-20250929"
 ANTHROPIC_INPUT_USD_PER_MTOK = 3.0
 ANTHROPIC_OUTPUT_USD_PER_MTOK = 15.0
 
+# Claude Opus 5 (H2H second Anthropic arm; do not overwrite Sonnet predictions)
+OPUS_MODEL = "claude-opus-5"
+OPUS_INPUT_USD_PER_MTOK = 5.0
+OPUS_OUTPUT_USD_PER_MTOK = 25.0
+
 LABEL_RCT = "RCT"
 LABEL_NON = "non_RCT"
 LABEL_INCLUDE = "include"

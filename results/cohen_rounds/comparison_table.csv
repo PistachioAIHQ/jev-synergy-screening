@@ -1,0 +1,37 @@
+set,variant,acc,prec,rec,f1,cm,note
+h2h100,BASELINE shipped,0.94,0.6667,0.8,0.7273,8/4/2/86,seed 20260916
+film200,BASELINE shipped,0.91,0.5417,0.65,0.5909,13/11/7/169,seed 20260917
+full851,BASELINE shipped,0.9377,0.7013,0.6429,0.6708,54/23/30/744,full ADHD
+h2h100,baseline_gates,0.99,1.0,0.9,0.9474,9/0/1/90,live r2 questions
+h2h100,choice_only,0.97,0.7692,1.0,0.8696,10/3/0/87,live r2 questions
+h2h100,choice_not_pub_0.4,0.99,0.9091,1.0,0.9524,10/1/0/89,live r2 questions
+h2h100,r2_ship,1.0,1.0,1.0,1.0,10/0/0/90,live r2 questions
+h2h100,r2_strict_fp,0.99,1.0,0.9,0.9474,9/0/1/90,live r2 questions
+h2h100,r2_recall,1.0,1.0,1.0,1.0,10/0/0/90,live r2 questions
+h2h100,choice_plus_fp_gates,0.99,0.9091,1.0,0.9524,10/1/0/89,live r2 questions
+film200,baseline_gates,0.935,0.6522,0.75,0.6977,15/8/5/172,live r2 questions
+film200,choice_only,0.905,0.5135,0.95,0.6667,19/18/1/162,live r2 questions
+film200,choice_not_pub_0.4,0.915,0.5429,0.95,0.6909,19/16/1/164,live r2 questions
+film200,r2_ship,0.92,0.5714,0.8,0.6667,16/12/4/168,live r2 questions
+film200,r2_strict_fp,0.935,0.6522,0.75,0.6977,15/8/5/172,live r2 questions
+film200,r2_recall,0.915,0.5517,0.8,0.6531,16/13/4/167,live r2 questions
+film200,choice_plus_fp_gates,0.92,0.5588,0.95,0.7037,19/15/1/165,live r2 questions
+full851,baseline_gates,0.9436,0.7143,0.7143,0.7143,60/24/24/743,live r2 questions
+full851,choice_only,0.9248,0.5746,0.9167,0.7064,77/57/7/710,live r2 questions
+full851,choice_not_pub_0.4,0.9354,0.6179,0.9048,0.7343,76/47/8/720,live r2 questions
+full851,r2_ship,0.9459,0.6863,0.8333,0.7527,70/32/14/735,live r2 questions
+full851,r2_strict_fp,0.9424,0.7108,0.7024,0.7066,59/24/25/743,live r2 questions
+full851,r2_recall,0.9412,0.6604,0.8333,0.7368,70/36/14/731,live r2 questions
+full851,choice_plus_fp_gates,0.9377,0.6325,0.881,0.7363,74/43/10/724,live r2 questions
+h2h100,offline/baseline_gates,0.94,0.6667,0.8,0.7273,8/4/2/86,"old questions, new combine only"
+h2h100,offline/choice_only,0.92,0.5714,0.8,0.6667,8/6/2/84,"old questions, new combine only"
+h2h100,offline/choice_not_pub_0.4,0.94,0.6667,0.8,0.7273,8/4/2/86,"old questions, new combine only"
+h2h100,offline/soft_r2_no_new,0.94,0.6667,0.8,0.7273,8/4/2/86,"old questions, new combine only"
+full851,offline/baseline_gates,0.9377,0.7013,0.6429,0.6708,54/23/30/744,"old questions, new combine only"
+full851,offline/choice_only,0.9283,0.592,0.881,0.7081,74/51/10/716,"old questions, new combine only"
+full851,offline/choice_not_pub_0.4,0.9424,0.6549,0.881,0.7513,74/39/10/728,"old questions, new combine only"
+full851,offline/soft_r2_no_new,0.9448,0.6907,0.7976,0.7403,67/30/17/737,"old questions, new combine only"
+film200,offline/baseline_gates,0.91,0.5417,0.65,0.5909,13/11/7/169,"old questions, new combine only"
+film200,offline/choice_only,0.905,0.5143,0.9,0.6545,18/17/2/163,"old questions, new combine only"
+film200,offline/choice_not_pub_0.4,0.92,0.5625,0.9,0.6923,18/14/2/166,"old questions, new combine only"
+film200,offline/soft_r2_no_new,0.915,0.5556,0.75,0.6383,15/12/5/168,"old questions, new combine only"

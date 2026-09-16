@@ -1,16 +1,24 @@
-"""Fair head-to-head: Jev vs Anthropic on stratified Cohen ADHD Abstract Triage ~100."""
+"""Fair head-to-head: Jev vs Anthropic (Sonnet/Opus) on stratified Cohen ADHD Abstract Triage ~100."""
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from pathlib import Path
 
 import pandas as pd
 
-from .anthropic_client import classify_anthropic, load_anthropic_key
+from .anthropic_client import classify_anthropic, load_anthropic_key, pricing_for_model
 from .cohen_adhd import NOUL_KEYS, RULE_ID, load_h2h, load_metadata
-from .config import H2H_DIR, H2H_SEED, LABEL_INCLUDE
+from .config import (
+    ANTHROPIC_MODEL,
+    H2H_DIR,
+    H2H_SEED,
+    LABEL_INCLUDE,
+    OPUS_MODEL,
+)
 from .jev_client import classify_cohen, load_api_key
 from .metrics import compute_metrics
 
@@ -58,44 +66,86 @@ def _jev_one(row: dict, api_key: str) -> dict:
         }
 
 
-def _ant_one(row: dict, api_key: str) -> dict:
+def _ant_one(
+    row: dict,
+    api_key: str,
+    *,
+    model: str,
+    system_label: str,
+    cache_dir: Path | None = None,
+    max_retries: int = 4,
+) -> dict:
     base = {
         "demo_idx": int(row["demo_idx"]),
         "pmid": row.get("pmid") or "",
         "gold": row["gold"],
         "title": row["title"],
         "abstract": row["abstract"],
-        "system": "anthropic",
+        "system": system_label,
     }
-    try:
-        out = classify_anthropic(row["title"], row["abstract"], api_key=api_key)
-        return {
-            **base,
-            "pred": out["pred"],
-            "choice": out.get("choice"),
-            "confidence": out.get("confidence"),
-            "latency_ms": out["latency_ms"],
-            "input_tokens": out.get("input_tokens") or 0,
-            "output_tokens": out.get("output_tokens") or 0,
-            "cost_usd": out.get("cost_usd") or 0.0,
-            "model": out.get("model"),
-            "rule": out.get("rule"),
-            "error": "",
-        }
-    except Exception as e:  # noqa: BLE001
-        return {
-            **base,
-            "pred": "",
-            "choice": "",
-            "confidence": 0.0,
-            "latency_ms": 0.0,
-            "input_tokens": 0,
-            "output_tokens": 0,
-            "cost_usd": 0.0,
-            "model": "",
-            "rule": "anthropic_structured_tool_include_exclude",
-            "error": str(e)[:300],
-        }
+    cache_path = None
+    if cache_dir is not None:
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        h = hashlib.sha256(
+            f"{model}\n{row['title']}\n{row['abstract']}".encode("utf-8")
+        ).hexdigest()[:24]
+        cache_path = cache_dir / f"{int(row['demo_idx']):04d}_{h}.json"
+        if cache_path.is_file():
+            try:
+                cached = json.loads(cache_path.read_text(encoding="utf-8"))
+                if cached.get("pred") in ("include", "exclude"):
+                    return {**base, **{k: cached[k] for k in cached if k != "system"}, "system": system_label, "error": cached.get("error", "")}
+            except Exception:  # noqa: BLE001
+                pass
+
+    last_err = ""
+    for attempt in range(max_retries):
+        try:
+            out = classify_anthropic(
+                row["title"], row["abstract"], api_key=api_key, model=model
+            )
+            result = {
+                **base,
+                "pred": out["pred"],
+                "choice": out.get("choice"),
+                "confidence": out.get("confidence"),
+                "latency_ms": out["latency_ms"],
+                "input_tokens": out.get("input_tokens") or 0,
+                "output_tokens": out.get("output_tokens") or 0,
+                "cost_usd": out.get("cost_usd") or 0.0,
+                "model": out.get("model"),
+                "rule": out.get("rule"),
+                "error": "",
+                "retries": attempt,
+            }
+            if cache_path is not None:
+                cache_path.write_text(json.dumps(result, default=str), encoding="utf-8")
+            return result
+        except Exception as e:  # noqa: BLE001
+            last_err = str(e)[:300]
+            # backoff on rate limits / transient errors
+            sleep_s = min(2 ** attempt, 16)
+            if "429" in last_err or "529" in last_err or "rate" in last_err.lower():
+                time.sleep(sleep_s)
+            elif attempt < max_retries - 1:
+                time.sleep(sleep_s)
+            else:
+                break
+    result = {
+        **base,
+        "pred": "",
+        "choice": "",
+        "confidence": 0.0,
+        "latency_ms": 0.0,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cost_usd": 0.0,
+        "model": model,
+        "rule": "anthropic_structured_tool_include_exclude",
+        "error": last_err,
+        "retries": max_retries,
+    }
+    return result
 
 
 def _summarize(df: pd.DataFrame, system: str) -> dict:
@@ -114,7 +164,80 @@ def _summarize(df: pd.DataFrame, system: str) -> dict:
     return m
 
 
-def run(*, workers: int = 6, systems: tuple[str, ...] = ("jev", "anthropic")) -> dict:
+def _load_frozen_system(name: str, path: Path) -> dict | None:
+    if not path.is_file():
+        return None
+    df = pd.read_csv(path)
+    return _summarize(df, name)
+
+
+def _run_anthropic_arm(
+    rows: list[dict],
+    *,
+    model: str,
+    system_label: str,
+    out_csv: Path,
+    workers: int,
+    cache_dir: Path | None,
+) -> dict:
+    print(f"=== {system_label} ({model}) on H2H-100 ===", flush=True)
+    key = load_anthropic_key()
+    in_rate, out_rate = pricing_for_model(model)
+    print(f"  pricing: ${in_rate}/MTok in, ${out_rate}/MTok out", flush=True)
+    t0 = time.perf_counter()
+    out: list[dict] = []
+    aw = min(workers, 4)
+    with ThreadPoolExecutor(max_workers=aw) as ex:
+        futs = [
+            ex.submit(
+                _ant_one,
+                r,
+                key,
+                model=model,
+                system_label=system_label,
+                cache_dir=cache_dir,
+            )
+            for r in rows
+        ]
+        done = 0
+        for fut in as_completed(futs):
+            out.append(fut.result())
+            done += 1
+            if done % 10 == 0 or done == len(rows):
+                n_err = sum(1 for x in out if x.get("error"))
+                print(f"  {system_label} {done}/{len(rows)} errors={n_err}", flush=True)
+    out.sort(key=lambda r: r["demo_idx"])
+    adf = pd.DataFrame(out)
+    adf.to_csv(out_csv, index=False)
+    am = _summarize(adf, system_label)
+    am["wall_seconds"] = time.perf_counter() - t0
+    am["pricing_input_usd_per_mtok"] = in_rate
+    am["pricing_output_usd_per_mtok"] = out_rate
+    print(json.dumps(am, indent=2), flush=True)
+    return am
+
+
+def run(
+    *,
+    workers: int = 6,
+    systems: tuple[str, ...] = ("jev", "anthropic"),
+    anthropic_model: str | None = None,
+    anthropic_label: str | None = None,
+) -> dict:
+    """Run selected systems. Frozen prediction CSVs are reused when a system is not re-run.
+
+    systems: jev | anthropic (sonnet) | opus | sonnet (alias of anthropic)
+    """
+    # normalize aliases
+    norm: list[str] = []
+    for s in systems:
+        s = s.strip().lower()
+        if s == "sonnet":
+            s = "anthropic"
+        if s and s not in norm:
+            norm.append(s)
+    systems = tuple(norm)
+
     demo = load_h2h()
     H2H_DIR.mkdir(parents=True, exist_ok=True)
     rows = demo.to_dict(orient="records")
@@ -135,6 +258,19 @@ def run(*, workers: int = 6, systems: tuple[str, ...] = ("jev", "anthropic")) ->
         "review_meta": load_metadata(),
         "systems": {},
     }
+
+    # Preserve frozen arms from disk when not re-running
+    frozen_paths = {
+        "jev": H2H_DIR / "jev_predictions.csv",
+        "anthropic": H2H_DIR / "anthropic_predictions.csv",
+        "opus": H2H_DIR / "opus_predictions.csv",
+    }
+    for name, path in frozen_paths.items():
+        if name not in systems:
+            frozen = _load_frozen_system(name, path)
+            if frozen is not None:
+                summary["systems"][name] = frozen
+                print(f"=== frozen {name} loaded from {path.name} ===", flush=True)
 
     if "jev" in systems:
         print("=== Jev on H2H-100 ===", flush=True)
@@ -159,29 +295,68 @@ def run(*, workers: int = 6, systems: tuple[str, ...] = ("jev", "anthropic")) ->
         print(json.dumps(jm, indent=2), flush=True)
 
     if "anthropic" in systems:
-        print("=== Anthropic on H2H-100 ===", flush=True)
-        key = load_anthropic_key()
-        t0 = time.perf_counter()
-        out = []
-        aw = min(workers, 4)
-        with ThreadPoolExecutor(max_workers=aw) as ex:
-            futs = [ex.submit(_ant_one, r, key) for r in rows]
-            done = 0
-            for fut in as_completed(futs):
-                out.append(fut.result())
-                done += 1
-                if done % 10 == 0 or done == len(rows):
-                    print(f"  anthropic {done}/{len(rows)}", flush=True)
-        out.sort(key=lambda r: r["demo_idx"])
-        adf = pd.DataFrame(out)
-        adf.to_csv(H2H_DIR / "anthropic_predictions.csv", index=False)
-        am = _summarize(adf, "anthropic")
-        am["wall_seconds"] = time.perf_counter() - t0
-        summary["systems"]["anthropic"] = am
-        print(json.dumps(am, indent=2), flush=True)
+        model = anthropic_model or ANTHROPIC_MODEL
+        # If user passed --anthropic-model opus while systems=anthropic, still write sonnet path
+        # unless label says otherwise. Default anthropic arm = Sonnet file.
+        label = anthropic_label or "anthropic"
+        out_csv = H2H_DIR / "anthropic_predictions.csv"
+        if label == "opus" or "opus" in model.lower():
+            # safety: never overwrite sonnet file with opus
+            out_csv = H2H_DIR / "opus_predictions.csv"
+            label = "opus"
+        am = _run_anthropic_arm(
+            rows,
+            model=model,
+            system_label=label,
+            out_csv=out_csv,
+            workers=workers,
+            cache_dir=H2H_DIR / ("opus_cache" if label == "opus" else "anthropic_cache"),
+        )
+        summary["systems"][label] = am
 
+    if "opus" in systems:
+        # Dedicated Opus arm; never writes anthropic_predictions.csv (Sonnet frozen).
+        model = anthropic_model if (anthropic_model and "opus" in anthropic_model.lower()) else OPUS_MODEL
+        am = _run_anthropic_arm(
+            rows,
+            model=model,
+            system_label="opus",
+            out_csv=H2H_DIR / "opus_predictions.csv",
+            workers=workers,
+            cache_dir=H2H_DIR / "opus_cache",
+        )
+        summary["systems"]["opus"] = am
+
+    # Stable table order: jev, anthropic/sonnet, opus
+    order = ["jev", "anthropic", "opus"]
     table = []
+    for name in order:
+        if name not in summary["systems"]:
+            continue
+        m = summary["systems"][name]
+        table.append(
+            {
+                "system": name,
+                "n": m["n"],
+                "precision": m["precision"],
+                "recall": m["recall"],
+                "f1": m["f1"],
+                "accuracy": m["accuracy"],
+                "tp": m["tp"],
+                "fp": m["fp"],
+                "fn": m["fn"],
+                "tn": m["tn"],
+                "mean_latency_ms": m["mean_latency_ms"],
+                "p50_latency_ms": m["p50_latency_ms"],
+                "p95_latency_ms": m["p95_latency_ms"],
+                "cost_usd_sum": m["cost_usd_sum"],
+                "model": m.get("model"),
+            }
+        )
+    # any extras
     for name, m in summary["systems"].items():
+        if name in order:
+            continue
         table.append(
             {
                 "system": name,
@@ -212,10 +387,29 @@ def run(*, workers: int = 6, systems: tuple[str, ...] = ("jev", "anthropic")) ->
 def main() -> None:
     p = argparse.ArgumentParser()
     p.add_argument("--workers", type=int, default=6)
-    p.add_argument("--systems", default="jev,anthropic")
+    p.add_argument(
+        "--systems",
+        default="jev,anthropic",
+        help="Comma list: jev,anthropic|sonnet,opus",
+    )
+    p.add_argument(
+        "--anthropic-model",
+        default=None,
+        help="Override Anthropic model id (e.g. claude-opus-5). Used with anthropic/opus arms.",
+    )
+    p.add_argument(
+        "--anthropic-label",
+        default=None,
+        help="Label for anthropic arm output (anthropic|opus). Prefer --systems opus.",
+    )
     args = p.parse_args()
     systems = tuple(s.strip() for s in args.systems.split(",") if s.strip())
-    run(workers=args.workers, systems=systems)
+    run(
+        workers=args.workers,
+        systems=systems,
+        anthropic_model=args.anthropic_model,
+        anthropic_label=args.anthropic_label,
+    )
 
 
 if __name__ == "__main__":

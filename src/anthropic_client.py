@@ -16,6 +16,9 @@ from .config import (
     ANTHROPIC_OUTPUT_USD_PER_MTOK,
     LABEL_EXCLUDE,
     LABEL_INCLUDE,
+    OPUS_INPUT_USD_PER_MTOK,
+    OPUS_MODEL,
+    OPUS_OUTPUT_USD_PER_MTOK,
 )
 
 ANTHROPIC_URL = "https://api.anthropic.com/v1/messages"
@@ -56,6 +59,14 @@ SCREEN_TOOL = {
 }
 
 
+def pricing_for_model(model: str) -> tuple[float, float]:
+    """Return (input_usd_per_mtok, output_usd_per_mtok) for known Anthropic models."""
+    m = (model or "").lower()
+    if "opus" in m or model == OPUS_MODEL:
+        return OPUS_INPUT_USD_PER_MTOK, OPUS_OUTPUT_USD_PER_MTOK
+    return ANTHROPIC_INPUT_USD_PER_MTOK, ANTHROPIC_OUTPUT_USD_PER_MTOK
+
+
 def classify_anthropic(
     title: str,
     abstract: str,
@@ -63,9 +74,16 @@ def classify_anthropic(
     api_key: str | None = None,
     model: str | None = None,
     timeout: float = 90.0,
+    input_usd_per_mtok: float | None = None,
+    output_usd_per_mtok: float | None = None,
 ) -> dict[str, Any]:
     key = api_key or load_anthropic_key()
     model = model or ANTHROPIC_MODEL
+    in_rate, out_rate = pricing_for_model(model)
+    if input_usd_per_mtok is not None:
+        in_rate = input_usd_per_mtok
+    if output_usd_per_mtok is not None:
+        out_rate = output_usd_per_mtok
     criteria = criteria_text_for_anthropic()
     user = (
         f"{criteria}\n\n---\nTITLE:\n{title.strip()}\n\nABSTRACT:\n{abstract.strip()}\n---\n"
@@ -111,10 +129,7 @@ def classify_anthropic(
     usage = data.get("usage") or {}
     in_tok = int(usage.get("input_tokens") or 0)
     out_tok = int(usage.get("output_tokens") or 0)
-    cost = (
-        in_tok * ANTHROPIC_INPUT_USD_PER_MTOK / 1_000_000.0
-        + out_tok * ANTHROPIC_OUTPUT_USD_PER_MTOK / 1_000_000.0
-    )
+    cost = in_tok * in_rate / 1_000_000.0 + out_tok * out_rate / 1_000_000.0
     return {
         "pred": decision,
         "choice": decision,
@@ -129,6 +144,7 @@ def classify_anthropic(
         "rule": "anthropic_structured_tool_include_exclude",
         "raw": data,
     }
+
 
 # runner aliases
 load_anthropic_key = load_anthropic_key

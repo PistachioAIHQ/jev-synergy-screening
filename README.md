@@ -15,17 +15,20 @@ Optional mode: **Bat4RCT** r3_ship (MEDLINE PT RCT tagging) remains in the UI to
 | Never | Article Triage / full-text labels · SYNERGY `label_included` |
 | Topic | ADHD (N=851; 84 include ≈ 9.9%) |
 | Eligibility | Oregon DERP ADHD pharmacologic review (population, listed drugs, design, outcomes, duration / pub-type excludes) |
-| Encode | Jev Choice `include\|exclude` + atomic Nouls for Cohen reason codes **2–7**; combine in code; shown in Questions drawer |
+| Encode | Jev Choice `include\|exclude` + atomic Nouls (**`cohen_adhd_r2_ship`**: codes 2–7 + monograph/imaging/formulation gates); combine in code; shown in Questions drawer |
 
 Custom open data from the authors’ page — **not CC-BY**. Cite Cohen 2006 (see `data/COHEN_LICENSE_NOTE.md`).
 
 ## Headline metrics (include class)
 
+Rule: **`cohen_adhd_r2_ship`**. H2H-100 has only **N=10** positives — **do not headline H2H 100%**; prefer full-851 F1.
+
+
 ### Film grid (stratified N=200, seed **20260917**)
 
 | Acc | Prec | Rec | F1 | TP/FP/FN/TN | Mean lat | Est. $ |
 |-----|------|-----|----|-------------|----------|--------|
-| **91.0%** | **54.2%** | **65.0%** | **59.1%** | 13/11/7/169 | ~528 ms | ~$0.013 |
+| **92.0%** | **57.1%** | **80.0%** | **66.7%** | 16/12/4/168 | ~523 ms | ~$0.018 |
 
 Film uses a stratified subsample so the grid is filmable; prevalence preserved (20/180). Metrics above are on that film set and labeled as such.
 
@@ -33,7 +36,7 @@ Film uses a stratified subsample so the grid is filmable; prevalence preserved (
 
 | Acc | Prec | Rec | F1 | TP/FP/FN/TN | Mean / p50 / p95 lat | Est. $ |
 |-----|------|-----|----|-------------|----------------------|--------|
-| **93.8%** | **70.1%** | **64.3%** | **67.1%** | 54/23/30/744 | 526 / 522 / 624 ms | **~$0.056** |
+| **94.6%** | **68.6%** | **83.3%** | **75.3%** | 70/32/14/735 | ~523 / ~518 / ~593 ms | **~$0.078** |
 
 Artifacts: `results/full/`.
 

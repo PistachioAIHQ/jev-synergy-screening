@@ -1,0 +1,48 @@
+{
+  "rule_id": "cohen_adhd_r2_ship",
+  "recommended": true,
+  "combine": {
+    "choice": "include",
+    "is_drug_monograph_or_product_profile": "<0.5",
+    "is_imaging_or_biomarker_only": "<0.5",
+    "is_formulation_dev_without_efficacy": "<0.5",
+    "eligible_population": ">=0.4",
+    "listed_adhd_drug": ">=0.5",
+    "eligible_outcome": ">=0.35",
+    "eligible_study_design": ">=0.45",
+    "wrong_publication_type": "<0.4",
+    "inadequate_study_duration": "<0.85"
+  },
+  "metrics": {
+    "h2h100": {
+      "f1": 1.0,
+      "cm": "10/0/0/90",
+      "caveat": "N=10 positives; do not headline"
+    },
+    "film200": {
+      "f1": 0.6667,
+      "cm": "16/12/4/168"
+    },
+    "full851": {
+      "f1": 0.7527,
+      "cm": "70/32/14/735",
+      "delta_vs_baseline_f1": 0.0819
+    }
+  },
+  "baseline": {
+    "h2h100": {
+      "f1": 0.7273,
+      "cm": "8/4/2/86"
+    },
+    "film200": {
+      "f1": 0.5909,
+      "cm": "13/11/7/169"
+    },
+    "full851": {
+      "f1": 0.6708,
+      "cm": "54/23/30/744"
+    }
+  },
+  "improved": true,
+  "questions_file": "questions_r2.json"
+}
